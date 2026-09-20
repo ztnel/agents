@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Run regression harness
+        run: python tests/run_ci.py
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: regression
+    env:
+      COPILOT_HOME: ${{ runner.temp }}/copilot-home
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Copilot CLI
+        # Pin to the validated baseline; bump intentionally with re-validation.
+        run: npm install -g @github/copilot@latest
+
+      - name: Install the workspace plugin
+        run: copilot plugin install "$GITHUB_WORKSPACE"
+
+      - name: Run package discovery smoke without live agents
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork
+        run: python tests/copilot_smoke.py --skip-live
+
+      - name: Run package discovery smoke with live agents
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: python tests/copilot_smoke.py --expect-live

@@ -116,6 +116,24 @@ When the human requests a change, decide whether it warrants another TDD loop
 or a direct edit, and **say which and why**. Same judgement as section 2,
 applied to a smaller change.
 
+### GitHub issue workflow
+
+When the human wants a GitHub issue drafted or filed, compose `github-issue`
+for repository resolution, duplicate search, draft persistence, metadata
+validation, and the final GitHub MCP call. Use `writer` only to tighten the
+human-facing prose; do not duplicate its documentation rules here.
+
+Issue creation is blocked until the exact Markdown draft is human-marked reviewed in `tuicr`. Preserve the local review repo and session across draft revisions so unchanged marks survive. A wake event may only handle local comments and draft edits; never create an issue from a wake event. Only act on an approved close report for the exact draft, target repo, and unchanged HEAD.
+
+Read the human identity for `Identified by` and `Approved by` from real email
+addresses. When you need the approver address yourself, read `git config
+user.email`. Record one concrete model ID per distinct agent author or reviewer
+and refuse placeholders such as `copilot-auto`, `auto`, or `unknown`.
+
+Publish through MCP only after the gate clears. `github-issue` owns issue
+research, repository reads, and issue_write payload preparation; you own the
+cross-skill review gate and the decision to proceed.
+
 ## 6. Commit and push
 
 An `approved` tuicr close report is explicit human approval. Act on it

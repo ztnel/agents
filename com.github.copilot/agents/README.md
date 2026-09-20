@@ -4,7 +4,7 @@ Copilot CLI custom agent definitions.
 
 ## Public API
 
-Each `*.agent.md` file defines one Copilot CLI agent. The `developer.agent.md` definition is the front-door agent for reviewed feature work.
+Each `*.agent.md` file defines one Copilot CLI agent. The `developer.agent.md` definition is the front-door agent for reviewed feature work, including review-gated GitHub issue reporting through `github-issue`, `writer`, `tuicr`, and GitHub MCP.
 
 ## Design criteria
 
