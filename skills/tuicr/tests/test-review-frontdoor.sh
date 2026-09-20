@@ -42,7 +42,9 @@ case "$1 $2" in
   {"id":"c2","comment_type":"question","content":"answered already","created_at":"2026-01-01T00:00:01Z",
    "path":"src/app.c","start_line":3,"end_line":3,"side":"new"},
   {"id":"c3","comment_type":"reply","content":"prior reply","created_at":"2026-01-01T00:00:02Z",
-   "path":"src/app.c","start_line":3,"end_line":3,"side":"new"}
+   "path":"src/app.c","start_line":3,"end_line":3,"side":"new"},
+  {"id":"c4","comment_type":"praise","content":"lgtm","created_at":"2026-01-01T00:00:03Z",
+   "path":null,"start_line":null,"end_line":null,"side":null}
 ]
 JSON
     ;;
@@ -114,7 +116,21 @@ case "${out}" in
   *) fail "reply should report the anchor it used, got: ${out}" ;;
 esac
 
-# --- 4. unknown comment id is rejected, and says what exists ----------------
+# --- 4. review-level replies omit positional anchor flags ------------------
+: > "${ARGV_LOG}"
+out="$(run_review reply --to c4 --username model-x "thank you")"
+if [ $? -ne 0 ]; then fail "review-level reply should succeed, got: ${out}"; fi
+add_line="$(grep '^review add' "${ARGV_LOG}" || true)"
+case "${add_line}" in
+  *"--target-file"*|*"--line"*|*"--end-line"*|*"--side"*)
+    fail "review-level reply must omit positional anchor flags: ${add_line}" ;;
+esac
+case "${out}" in
+  *"ANCHOR=review"*) : ;;
+  *) fail "review-level reply should identify its scope, got: ${out}" ;;
+esac
+
+# --- 5. unknown comment id is rejected, and says what exists ----------------
 out="$(run_review reply --to nope "body")"; rc=$?
 if [ "${rc}" -eq 0 ]; then fail "replying to an unknown id should fail"; fi
 case "${out}" in
@@ -122,7 +138,7 @@ case "${out}" in
   *) fail "unknown-id error should list available ids, got: ${out}" ;;
 esac
 
-# --- 5. the reply size budget is enforced ----------------------------------
+# --- 6. the reply size budget is enforced ----------------------------------
 big="$(python3 -c 'print("x" * 1501, end="")')"
 out="$(run_review reply --to c1 "${big}")"; rc=$?
 if [ "${rc}" -eq 0 ]; then fail "an over-budget reply should be rejected"; fi
@@ -136,7 +152,7 @@ if ! run_review reply --to c1 "${ok}" >/dev/null 2>&1; then
   fail "a reply exactly at the budget should be accepted"
 fi
 
-# --- 6. --unanswered hides replied-to and reply-typed comments -------------
+# --- 7. --unanswered hides replied-to and reply-typed comments -------------
 out="$(run_review comments --unanswered)"
 case "${out}" in
   *c1*) : ;;
@@ -149,14 +165,14 @@ case "${out}" in
   *c3*) fail "--unanswered should hide reply-typed comments: ${out}" ;;
 esac
 
-# --- 7. the session is auto-resolved from the active session ---------------
+# --- 8. the session is auto-resolved from the active session ---------------
 : > "${ARGV_LOG}"
 run_review comments >/dev/null 2>&1
 if ! grep -q -- "--session sess-a" "${ARGV_LOG}"; then
   fail "comments should default to the active session, log: $(cat "${ARGV_LOG}")"
 fi
 
-# --- 8. flag position must not matter --------------------------------------
+# --- 9. flag position must not matter --------------------------------------
 # The raw CLI's positional sensitivity is the bug being designed out, so
 # --repo/--session are accepted on either side of the subcommand.
 for form in \

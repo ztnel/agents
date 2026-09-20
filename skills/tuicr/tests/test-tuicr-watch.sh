@@ -402,10 +402,10 @@ ledgerHas "${d}/state" c5 || fail "already-accepted wake was not reconciled"
 
 # --- re-arm: a delivered comment that never got a reply is retried ---------
 d="${tmp}/rearm"; setUp "${d}"
-REPO_KEY="$(cd "${d}/repo" && pwd)" python3 - "${d}/state" <<'PY'
+REPO_KEY="$(cd "${d}/repo" && pwd)" SKILL_LIB="${skillDir}/../_lib" python3 - "${d}/state" <<'PY'
 import json, os, sys
 from pathlib import Path
-sys.path.insert(0, "/Users/cs/git/dotfiles/.agents/skills/_lib")
+sys.path.insert(0, os.environ["SKILL_LIB"])
 from skillkit import paths
 state = sys.argv[1]
 key = paths.short_hash(str(Path(os.environ["REPO_KEY"]).resolve()), "review")
@@ -418,10 +418,10 @@ has '^send-keys.*-H 1b 5b 31 33 75' "${d}/tmux.log" ||
 
 # ...but not while it is still inside the re-arm window.
 d="${tmp}/norearm"; setUp "${d}"
-REPO_KEY="$(cd "${d}/repo" && pwd)" python3 - "${d}/state" <<'PY'
+REPO_KEY="$(cd "${d}/repo" && pwd)" SKILL_LIB="${skillDir}/../_lib" python3 - "${d}/state" <<'PY'
 import json, os, sys, time
 from pathlib import Path
-sys.path.insert(0, "/Users/cs/git/dotfiles/.agents/skills/_lib")
+sys.path.insert(0, os.environ["SKILL_LIB"])
 from skillkit import paths
 state = sys.argv[1]
 key = paths.short_hash(str(Path(os.environ["REPO_KEY"]).resolve()), "review")
@@ -445,11 +445,11 @@ fi
 
 # --- a second daemon on the same session is refused ------------------------
 d="${tmp}/singleton"; setUp "${d}"
-lockKey="$(REPO_KEY="$(cd "${d}/repo" && pwd)" python3 -c '
+lockKey="$(REPO_KEY="$(cd "${d}/repo" && pwd)" SKILL_LIB="${skillDir}/../_lib" python3 -c '
 from pathlib import Path
 import os
 import sys
-sys.path.insert(0, "/Users/cs/git/dotfiles/.agents/skills/_lib")
+sys.path.insert(0, os.environ["SKILL_LIB"])
 from skillkit import paths
 print(paths.short_hash(str(Path(os.environ["REPO_KEY"]).resolve()), "review"))')"
 printf '%s\n' "$$" >"${d}/state/${lockKey}.lock"

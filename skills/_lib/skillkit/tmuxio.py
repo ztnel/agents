@@ -93,7 +93,7 @@ def display(target: str, fmt: str) -> str | None:
 
 def pane_exists(pane: str) -> bool:
     """Whether *pane* resolves to a live pane."""
-    return display(pane, "#{pane_id}") is not None
+    return bool(display(pane, "#{pane_id}"))
 
 
 def pane_pid(pane: str) -> int | None:

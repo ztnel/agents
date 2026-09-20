@@ -54,6 +54,9 @@ hardcoded name), `TUICR_HEAD_REF` (default `HEAD`), `TUICR_REMOTE` (default
 
 If tuicr is already reviewing that checkout, the launcher reuses the active
 review session and still starts the watcher instead of opening another window.
+Persisted sessions are reused across review cycles so unchanged human review
+marks survive. tuicr owns mark invalidation when file content changes; callers
+must not move, replace, delete, or edit session files to force a refresh.
 
 Refuses (exit 1) when tuicr is missing, the target is not a git repo, or it is
 not running inside tmux. Exits 0 without acting if a tuicr pane is already open

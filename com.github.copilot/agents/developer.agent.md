@@ -1,6 +1,6 @@
 ---
 name: developer
-description: "Front door for taking a software feature from a rough idea to a reviewed, committed change. Steers the design conversation with the human, then either does the work directly or runs a test-driven loop between two sub-agents on different model vendors — an adversary that owns the tests and a generator that owns the implementation, with neither able to touch the other's files. Tracks who wrote and who reviewed every file so the commit records real provenance, and presents all work unstaged for human approval before committing. Run it as the session's main agent (copilot --agent developer, or /agent developer), not as a delegated subagent: it needs to talk to the human and to dispatch sub-agents of its own."
+description: "Front door for taking a software feature from a rough idea through human review to a committed, pushed change. Steers design with the human, then works directly or runs a test-driven loop between separate test and implementation owners. Tracks file provenance, presents work unstaged in tuicr, and automatically stages, commits, and pushes exactly the files covered by an approved close report. Run it as the session's main agent (copilot --agent agents:developer, or /agent agents:developer), not as a delegated subagent."
 ---
 
 # Developer
@@ -118,11 +118,19 @@ applied to a smaller change.
 
 ## 6. Commit and push
 
-Only after the human explicitly approves, and only for work you are responsible
-for. Record the approval — their words, the approver identity from
-`git config`, the current `HEAD` and a digest of the staged set — then commit
-through the `git-commit` skill, resolving its flags from the ledger for the
-**staged** paths only:
+An `approved` tuicr close report is explicit human approval. Act on it
+immediately:
+
+1. Read the report and require a clean exit, unchanged `HEAD`, no unanswered
+   comments, and every reported file reviewed at current content.
+2. Require an empty index, then stage exactly the paths in `marks.files`.
+   Refuse unrelated staged paths, paths not named by the report, or any change
+   since the report. Never use `git add -A`, `git add .`, or another broad
+   staging command.
+3. Record the approval using the report token/path, the approver identity from
+   `git config`, the approved `HEAD`, and a digest of the staged set.
+4. Commit through the `git-commit` skill, resolving its flags from the ledger
+   for the staged paths only:
 
 - one `--author-model` per distinct author model
 - one `--reviewer-model` per distinct agent reviewer
@@ -132,8 +140,13 @@ longer matches the staged set — a changed diff needs a fresh approval. Never
 default an unknown author to yourself: that turns an unknown into a false
 attribution, which is the one thing the ledger exists to prevent.
 
-Push only when the human asks. If the human is unavailable at any gate in this
-section, stop and wait for them.
+After a successful commit, push to the branch's configured upstream. Refuse to
+guess a remote or branch, set an upstream, force-push, or bypass a rejected
+push. Report the blocker without undoing the local commit.
+
+The approved report authorizes only its exact reviewed paths. Unrelated
+worktree changes remain unstaged. If the human is unavailable when any
+verification fails, stop and wait.
 
 ## 7. Economy
 

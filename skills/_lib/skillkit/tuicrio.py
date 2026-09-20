@@ -74,6 +74,8 @@ class Anchor:
         ]
 
     def __str__(self) -> str:
+        if not self.path:
+            return "review"
         span = f"{self.start_line}" if self.start_line == self.end_line else f"{self.start_line}-{self.end_line}"
         return f"{self.path}:{span}({self.side})"
 
@@ -385,7 +387,16 @@ def reply_to(
     parent :class:`Comment` rather than loose line numbers makes that automatic;
     a caller cannot accidentally drop ``end_line``.
     """
-    add(repo, session, parent.anchor, body, comment_type="reply", username=username)
+    if parent.anchor.path:
+        add(repo, session, parent.anchor, body, comment_type="reply", username=username)
+    else:
+        add_comment(
+            repo,
+            session,
+            body,
+            comment_type="reply",
+            username=username,
+        )
 
 
 def replies_by_anchor(all_comments: Iterable[Comment]) -> dict[Anchor, list[str]]:

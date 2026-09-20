@@ -90,6 +90,13 @@ list`.
 The CLI works outside tmux, so never require a multiplexer just to read an
 existing session.
 
+**Reuse the persisted session for that checkout and review target.** Review
+marks are human-owned state: unchanged files retain their marks, while tuicr
+automatically clears marks for changed files and adds new files unreviewed.
+Never move, replace, delete, or edit a persisted session file to refresh its
+file list or force a new review. Only do so when the human explicitly requests
+session-state maintenance.
+
 ## Reading comments
 
 There is no push stream from the TUI. Read on demand.
@@ -219,9 +226,11 @@ deterministic result.
   clean exit. It is never approval.
 
 Review marks are human-owned. Read and verify them; never create, change, or
-simulate them. Approval ends this skill's responsibility: do not stage, commit,
-push, or infer what approval enables. The invoking custom agent or human-owned
-workflow decides the next action.
+simulate them. Preserve the persisted session so unchanged marks survive future
+review cycles; let tuicr invalidate marks when content changes. Approval ends
+this skill's responsibility: do not stage, commit, push, or infer what approval
+enables. The invoking custom agent or human-owned workflow decides the next
+action.
 
 ## Live watch
 

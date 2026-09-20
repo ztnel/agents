@@ -259,7 +259,8 @@ def wake_closed_review(target_dir: str, slug: str, cli_session: str, verdict: di
     state_dir = paths.state_dir("tuicr", "reviews", create=True)
     state_file = state_dir / f"{paths.short_hash(target_dir, slug)}.json"
     paths.write_json_atomic(state_file, verdict, indent=2)
-    token = "tuicr-close-" + paths.short_hash(slug, verdict["verdict"], verdict["head_after"])
+    report_identity = json.dumps(verdict, sort_keys=True, separators=(",", ":"))
+    token = "tuicr-close-" + paths.short_hash(slug, report_identity)
     prompt = (
         f"tuicr close {token}: review session {slug} closed with "
         f"verdict={verdict['verdict']} ({target_dir}); report={state_file}. "

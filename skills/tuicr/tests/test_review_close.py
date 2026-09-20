@@ -59,6 +59,37 @@ class ReviewCloseTest(unittest.TestCase):
         self.assertFalse(report["approved"])
         self.assertIn("HEAD changed during review", report["reasons"])
 
+    def test_close_token_changes_with_report_state(self) -> None:
+        delivered = []
+
+        class Deliverer:
+            def __init__(self, *_args):
+                pass
+
+            def deliver_prompt(self, prompt, token, _summary):
+                delivered.append((prompt, token))
+                return True
+
+            def close(self):
+                pass
+
+        base = {
+            "verdict": "incomplete",
+            "head_after": "abc",
+            "marks": {"files": [{"path": "a", "state": "unreviewed"}]},
+        }
+        changed = {
+            **base,
+            "marks": {"files": [{"path": "a", "state": "reviewed"}]},
+        }
+        with patch.object(tuicr_up.paths, "state_dir", return_value=Path("/tmp")):
+            with patch.object(tuicr_up.paths, "write_json_atomic"):
+                with patch.object(tuicr_up, "resolve_target", return_value=(object(), "%1")):
+                    with patch.object(tuicr_up, "WakeDeliverer", Deliverer):
+                        tuicr_up.wake_closed_review("/repo", "review-a", "cli", base)
+                        tuicr_up.wake_closed_review("/repo", "review-a", "cli", changed)
+        self.assertNotEqual(delivered[0][1], delivered[1][1])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
