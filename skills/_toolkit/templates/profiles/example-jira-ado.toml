@@ -1,0 +1,44 @@
+# dev platform profile — EXAMPLE: Jira tickets + Azure DevOps pull requests.
+#
+# This is an example, not a default. Copy it to `<repo>/.dev.toml` or
+# `~/.config/dev/profile.toml` and replace the host, project keys and command
+# paths with your own.
+#
+# It shows how to delegate ticket fetch and PR creation to companion skills.
+# Both commands are argv LISTS: each element is substituted independently and
+# the process is spawned without a shell, so a ticket id or PR title can never
+# inject a command.
+
+name = "example-jira-ado"
+
+[branch]
+# Two-to-ten letter project key, e.g. `feature/ABC-123-add-widget`.
+# `@name/` supports personal branches.
+pattern = '^(?P<prefix>fix|feature|patch|@[A-Za-z0-9][A-Za-z0-9._-]*)/(?P<ticket>[A-Za-z]{2,10}-[0-9]+)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$'
+describe = "<fix|feature|patch|@name>/<ABC-123>-<kebab-title>"
+ticket_case = "upper"
+
+[ticket]
+url = "https://example.atlassian.net/browse/{ticket}"
+
+# Prints the ticket for the agent to read. `~` is expanded per element.
+fetch = ["~/.agents/skills/jira/lib/issue_fetch.py", "{ticket}", "--format", "both"]
+
+[pr]
+templates = [".azuredevops/pull_request_template.md"]
+
+# Available placeholders: {worktree} {branch} {target} {title} {body_file}
+# {ticket} {ticket_url}. The companion skill owns its own approval gate.
+open = [
+    "~/.agents/skills/az-pr/lib/pr_open.py",
+    "--repo", "{worktree}",
+    "--approved",
+    "--draft",
+    "--source", "{branch}",
+    "--target", "{target}",
+    "--title", "{title}",
+    "--body-file", "{body_file}",
+]
+
+[budget]
+cap_aic = 7000

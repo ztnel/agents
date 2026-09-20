@@ -1,0 +1,47 @@
+# dev platform profile — generic default.
+#
+# Copied or pointed at by `<repo>/.dev.toml` or
+# `~/.config/dev/profile.toml` to describe how YOUR job names branches, tracks
+# tickets and opens pull requests. Nothing here is vendor-specific: it accepts
+# a conventional `<TYPE>/<KEY-123>-<kebab-title>` branch and knows no ticket
+# host, so `dev` works out of the box and asks the human for the ticket text
+# and the PR.
+#
+# See ../../README.md for the full key reference.
+
+name = "default"
+
+[branch]
+# Named-group regex matched against the whole branch name.
+# Required groups: `ticket`, `slug`. Optional group: `prefix`.
+pattern = '^(?P<prefix>fix|feat|feature|patch|chore)/(?P<ticket>[A-Za-z][A-Za-z0-9]*-[0-9]+)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$'
+
+# Shown verbatim when a branch is rejected, so the human sees THEIR convention
+# rather than a regex.
+describe = "<fix|feat|feature|patch|chore>/<KEY-123>-<kebab-title>"
+
+# upper | lower | preserve — applied to the captured ticket id.
+ticket_case = "upper"
+
+[ticket]
+# `{ticket}` is substituted with the parsed id. With no real tracker
+# configured, this yields a self-describing non-link the agent shows the human.
+url = "ticket:{ticket}"
+
+# `fetch` is intentionally absent: there is no default tracker to query, so the
+# agent asks the human to paste the ticket text.
+
+[pr]
+# Tried in order, relative to the worktree root. The first that exists wins;
+# otherwise the skill's vendor-neutral templates/pr-fallback.md is used.
+templates = [
+    ".github/pull_request_template.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "docs/pull_request_template.md",
+]
+
+# `open` is intentionally absent: the human opens the PR themselves.
+
+[budget]
+# Monthly credit allowance used by budget-check.py.
+cap_aic = 7000

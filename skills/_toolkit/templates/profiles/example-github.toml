@@ -1,0 +1,38 @@
+# dev platform profile — EXAMPLE: GitHub issues + GitHub pull requests.
+#
+# This is an example, not a default. Copy it to `<repo>/.dev.toml` or
+# `~/.config/dev/profile.toml`.
+#
+# It exists to prove the same skill retargets with a config change alone:
+# GitHub issue ids are bare numbers, so the branch pattern and ticket URL look
+# nothing like the Jira example, yet every dev script is unchanged.
+
+name = "example-github"
+
+[branch]
+# Bare numeric issue id, e.g. `feat/123-add-widget`.
+pattern = '^(?P<prefix>fix|feat|chore|docs|refactor)/(?P<ticket>[0-9]+)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$'
+describe = "<fix|feat|chore|docs|refactor>/<issue-number>-<kebab-title>"
+ticket_case = "preserve"
+
+[ticket]
+url = "https://github.com/OWNER/REPO/issues/{ticket}"
+fetch = ["gh", "issue", "view", "{ticket}"]
+
+[pr]
+templates = [
+    ".github/pull_request_template.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+]
+
+open = [
+    "gh", "pr", "create",
+    "--draft",
+    "--base", "{target}",
+    "--head", "{branch}",
+    "--title", "{title}",
+    "--body-file", "{body_file}",
+]
+
+[budget]
+cap_aic = 7000

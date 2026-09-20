@@ -1,0 +1,34 @@
+---
+name: SKILL_NAME
+description: "SHORT_SUMMARY of what this skill does, in one or two sentences naming the concrete inputs, outputs and any hard safety boundary. Use when DESCRIBE_THE_TRIGGER — the situations, phrasings and user intents that should activate it, including cases where the human does not name the domain directly."
+---
+
+# `SKILL_NAME` — ONE_LINE_PURPOSE
+
+What this skill owns, and what it deliberately does not. State the boundary against
+adjacent skills so they do not cross-trigger.
+
+Entry points live next to this file. Resolve them as
+`~/.agents/skills/SKILL_NAME/lib/<entry>.py`.
+
+Python is the only source language for skill scripts — no shell. Shared primitives
+(process spawning, output, paths, git, tmux, tuicr) come from the shared
+`~/.agents/skills/_lib/skillkit` package; read `_lib/README.md` before adding one.
+
+## Quick start
+
+```bash
+~/.agents/skills/SKILL_NAME/lib/<entry>.py <args>
+```
+
+## Workflow
+
+1. Step → verify: how you know the step worked
+2. Step → verify: how you know the step worked
+
+## Gotchas
+
+Environment-specific facts that defy reasonable assumptions. Record the corrections a
+human had to make, not general advice.
+
+- CONCRETE_GOTCHA
