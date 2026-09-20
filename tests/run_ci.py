@@ -63,10 +63,14 @@ def _check_workflow() -> None:
         "cancel-in-progress: true",
         "regression:",
         "smoke:",
+        'run: echo "COPILOT_HOME=$RUNNER_TEMP/copilot-home" >> "$GITHUB_ENV"',
+        "run: npm install -g @github/copilot@1.0.86",
     ]
     missing = [token for token in required if token not in text]
     if missing:
         raise SystemExit(f"workflow check failed; missing tokens: {', '.join(missing)}")
+    if 'COPILOT_HOME: ${{ runner.temp }}/copilot-home' in text:
+        raise SystemExit("workflow check failed; job-level COPILOT_HOME must not use runner.temp")
 
 
 def _check_manifests() -> None:
