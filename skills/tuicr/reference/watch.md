@@ -121,7 +121,7 @@ Run the daemon directly (`lib/tuicr_watch.py`) only for debugging.
 | `--queue-timeout <s>` | Wait after the prompt leaves the box | `300` |
 | `--rearm <s>` | Re-deliver an unanswered comment after this long; `0` disables | `900` |
 | `--max-attempts <n>` | Deliveries per comment before giving up | `3` |
-| `--ignore-type <t>` | Comment type to ignore (repeatable; replaces the default) | `reply` |
+| `--ignore-type <t>` | Comment type to ignore (repeatable; replaces the defaults) | `reply`, `description`, `review-note` |
 | `--replay` | Ignore delivery history; treat all current comments as pending | off |
 | `--seed-existing` | On a first run, mark the existing backlog as seen instead of delivering it | off |
 | `--once` | Single fire cycle, then exit | off |
@@ -130,9 +130,10 @@ Run the daemon directly (`lib/tuicr_watch.py`) only for debugging.
 | `--session-state-dir <p>` | CLI session-state root | `$COPILOT_SESSION_STATE_DIR` or `~/.copilot/session-state` |
 
 Ignoring extra types is how a workflow keeps machine-generated comments from
-waking the agent — for example a mirror that stamps synced comments with their
-own type. Passing any `--ignore-type` replaces the default, so include `reply`
-explicitly if you still want replies ignored.
+waking the agent — for example a mirror that stamps synced comments with its
+own type. Passing any `--ignore-type` replaces the defaults, so include
+`reply`, `description`, and `review-note` explicitly if you still want all
+agent-authored comments ignored.
 
 ## Verifying without touching tmux
 

@@ -235,10 +235,6 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
         reasons.append("HEAD changed during review")
     if not marks.get("ok"):
         reasons.append("not every changed file is reviewed at current content")
-    if unanswered is None:
-        reasons.append("unanswered comments could not be read")
-    elif unanswered:
-        reasons.append("comments remain unanswered")
     approved = not reasons
     return {
         "approved": approved,

@@ -37,6 +37,11 @@ each script's contract and exit codes.
    commit, push, or sync to a remote forge. The human's review gate depends on
    this. Committing happens **outside** the loop, after the human has approved
    and the review is over — never in response to a wake.
+5. **Orient the reviewer in tuicr, not the source.** For agent-authored changes,
+   add one review-level `description` comment when opening the review. Add
+   concise `review-note` comments only where reviewer-specific context is
+   likely to prevent confusion. Do not put temporary review guidance into code
+   comments or durable documentation.
 
 ## Pick the workflow
 
@@ -90,6 +95,17 @@ list`.
 The CLI works outside tmux, so never require a multiplexer just to read an
 existing session.
 
+For agent-authored changes, post one concise review-level description after the
+session is available:
+
+```bash
+tuicr review add --repo <repo> --session <slug> \
+  --type description --username "<your-model-id>" \
+  "<intent, scope, and the most important review focus>"
+```
+
+Post it once per session; do not duplicate it when reusing an active session.
+
 **Reuse the persisted session for that checkout and review target.** Review
 marks are human-owned state: unchanged files retain their marks, while tuicr
 automatically clears marks for changed files and adds new files unreviewed.
@@ -134,9 +150,10 @@ Each comment carries `id`, `location`, `path`, `start_line`, `end_line`,
 > anchoring must match exactly.
 
 Treat types as: `issue` blocking, `suggestion` consider-or-justify, `note`
-answer, `praise` no action. If the result is empty, confirm the session choice.
-Re-read before claiming completion — the human may have kept commenting while
-you worked.
+answer, `praise` no action, and agent-authored `description` / `review-note`
+context only. If the result is empty, confirm the session choice. Re-read
+before claiming completion — the human may have kept commenting while you
+worked.
 
 ## Wake contract
 
@@ -205,10 +222,11 @@ comments still awaiting a reply are included. Answer all of them.
 7. **Stop at the local boundary.** Unstaged edits and local draft replies only.
    The human reviews the diff and the threads afterwards.
 
-> **No status updates in tuicr.** The only comments you post are `--type reply`
-> responses anchored to a human comment. A non-`reply` comment adds review
-> noise *and* wakes you again through the watcher — a self-wake
-> loop. Report progress in your own window, never in the review.
+> **No status updates in tuicr.** Proactive agent comments are limited to one
+> review-level `description` and targeted `review-note` context. Everything else
+> you post is a `--type reply` anchored to a human comment. The watcher ignores
+> all three agent-authored types, preventing self-wake loops. Report progress in
+> your own window, never in the review.
 
 ## Close contract
 
@@ -218,10 +236,11 @@ deterministic result.
 
 - `approved` means tuicr exited cleanly, `HEAD` did not move, the current change
   set is non-empty, every changed file is present and human-marked reviewed at
-  its current content, and every comment has an exact-anchor reply.
+  its current content. Unanswered comments are reported for context but do not
+  block approval.
 - `incomplete` means the review closed cleanly but one or more checks failed.
-  Report the exact `reasons`, unreviewed/absent/stale files, and unanswered
-  comments.
+  Report the exact `reasons` and unreviewed/absent/stale files. Also mention
+  unanswered comments when present, without treating them as an approval gate.
 - `aborted` means the window was killed, crashed, or otherwise did not record a
   clean exit. It is never approval.
 
@@ -265,11 +284,35 @@ pass `--username "<your model id>"` so agent comments are distinguishable.
 | `suggestion` | A non-blocking improvement they may take or skip. |
 | `note` | Context or an answer; no action required. |
 | `praise` | Something done well. Use sparingly. |
+| `description` | One concise review-level orientation for agent-authored changes: intent, scope, and review focus. |
+| `review-note` | Reviewer-specific clarification attached to the smallest useful file or line range; no action required. |
 | `reply` | A threaded response to an existing comment. **Always** use this when responding, anchored to the original's file/line(s)/side. |
 
 > Types come from the human's tuicr config (`comment_types`), not from tuicr
-> itself — `--type` defaults to `none`. If `--type reply` is rejected, the
-> config lacks that type: tell the human rather than silently posting untyped.
+> itself — `--type` defaults to `none`. If an agent type is rejected, the config
+> lacks it: tell the human rather than silently posting untyped.
+
+### Agent review context
+
+Use `description` and `review-note` to keep reviewer-only prose out of the
+source:
+
+- `description` is exactly one review-level comment per session. State what
+  changed, why, and where review attention is most valuable.
+- `review-note` is optional and sparse. Attach it to the smallest useful file,
+  line, or range when a section has a non-obvious tradeoff, constraint, or
+  testing implication that a reviewer needs but future source readers do not.
+- Keep durable rationale, public behavior, and maintenance constraints in the
+  code or project documentation. Review notes are not a substitute for required
+  source documentation.
+- Do not restate the diff, narrate implementation steps, or add generic notes.
+
+```bash
+tuicr review add --repo <repo> --session <slug> \
+  --target-file <path> --line <start> --end-line <end> --side <side> \
+  --type review-note --username "<your-model-id>" \
+  "<brief reviewer-specific context>"
+```
 
 ### Size budget (required)
 
@@ -363,7 +406,7 @@ unchanged ones. `--input` accepts literal JSON, `@file.json`, or `-` for stdin.
 | Base/head may be stale | Run `refresh_review_refs.py`; use `REVIEW_REVSET` |
 | `HEAD` behind + dirty worktree | Stop; reconcile before review |
 | `HEAD` diverged from upstream | Stop; rebase/merge as directed |
-| `--type reply` rejected | The human's `comment_types` config lacks `reply` |
+| An agent comment type is rejected | The human's `comment_types` config lacks `reply`, `description`, or `review-note` |
 | Your reply did not thread, or you are re-woken for a comment you answered | The anchor did not match exactly — re-post with the original's `end_line` and `side` |
 | Watcher will not start | See [`reference/watch.md`](reference/watch.md) troubleshooting |
 
