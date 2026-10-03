@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - Unreleased
+
+### Fixed
+- tuicr review windows preserve terminal access for external editors such as Neovim; exports use the clipboard instead of stdout capture.
+
 ## [0.2.1] - Unreleased
 
 ### Added
