@@ -75,16 +75,6 @@ def log_error(message: str) -> None:
     _log(_RED, message, stream=sys.stderr)
 
 
-def tuicr_supports_stdout() -> bool:
-    """Whether this tuicr accepts ``--stdout``.
-
-    Older builds export to the clipboard instead, which cannot be captured, so
-    the caller has to fall back to asking the human to paste.
-    """
-    result = run(["tuicr", "--help"], merge_stderr=True)
-    return "--stdout" in result.stdout
-
-
 def already_reviewing(directory: str) -> bool:
     """Whether a tuicr pane is already open on *directory*.
 
@@ -305,15 +295,10 @@ def launch(target_dir: str) -> int:
 
     head_before = git(target_dir, "rev-parse", "HEAD").stdout.strip()
 
-    output_file = ""
-    if tuicr_supports_stdout():
-        handle, output_file = tempfile.mkstemp(prefix="tuicr-output.", dir=os.environ.get("TMPDIR", "/tmp"))
-        os.close(handle)
-        inner = f"tuicr {'-w' if dirty else '-r ' + _sh_quote(revset)} --stdout > {_sh_quote(output_file)}"
-        log_info("Using --stdout mode (output will be captured)")
-    else:
-        inner = "tuicr -w" if dirty else f"tuicr -r {_sh_quote(revset)}"
-        log_warn("tuicr --stdout not supported, output will be copied to clipboard")
+    # tuicr must inherit the tmux pane's terminal so terminal editors launched
+    # by its `e` binding can take over the pane. Capturing stdout makes nvim
+    # inherit a pipe and fail before it draws.
+    inner = "tuicr -w" if dirty else f"tuicr -r {_sh_quote(revset)}"
 
     handle, completion_file = tempfile.mkstemp(
         prefix="tuicr-complete.", dir=os.environ.get("TMPDIR", "/tmp")
@@ -356,19 +341,7 @@ def launch(target_dir: str) -> int:
     verdict = review_verdict(target_dir, review_slug, head_before, exit_code)
     wake_closed_review(target_dir, verdict["session"], cli_session, verdict)
 
-    if output_file and Path(output_file).is_file():
-        content = Path(output_file).read_text(encoding="utf-8", errors="replace")
-        if content.strip():
-            print()
-            print("=== TUICR INSTRUCTIONS ===")
-            print(content, end="" if content.endswith("\n") else "\n")
-            print("=== END TUICR INSTRUCTIONS ===")
-        else:
-            log_info("No instructions exported from tuicr")
-            log_info("If you exported to clipboard, paste the instructions here")
-        Path(output_file).unlink(missing_ok=True)
-    else:
-        log_info("If you exported instructions, they are in your clipboard - paste them here")
+    log_info("If you exported instructions, they are in your clipboard - paste them here")
     return 0
 
 

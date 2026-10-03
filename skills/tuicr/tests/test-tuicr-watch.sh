@@ -592,7 +592,6 @@ def exercise(already_reviewing):
     mod.resolve_revset = lambda _target: "origin/main...HEAD"
     mod.resolve_cli_session = lambda: "cli-1"
     mod.already_reviewing = lambda _target: already_reviewing
-    mod.tuicr_supports_stdout = lambda: False
     mod.git = lambda *args, **kwargs: Result(stdout="")
     mod.pane_exists = lambda _pane: False
     mod.review_verdict = lambda *_args: {
@@ -613,6 +612,11 @@ def exercise(already_reviewing):
 
 calls = exercise(False)
 assert any(cmd[:2] == ["tmux", "new-window"] for cmd in calls), calls
+launch = next(cmd for cmd in calls if cmd[:2] == ["tmux", "new-window"])
+tuicr_command = launch[-1].split("; ", 1)[0]
+assert "--stdout" not in tuicr_command, launch
+assert "> " not in tuicr_command, launch
+assert "tuicr -r origin/main...HEAD" in tuicr_command, launch
 assert not any(cmd[:2] == ["tmux", "wait-for"] for cmd in calls), calls
 assert any(cmd[0] == sys.executable and cmd[1].endswith("watch_up.py") and "--stop" not in cmd for cmd in calls), calls
 assert any(cmd[0] == sys.executable and cmd[1].endswith("watch_up.py") and "--stop" in cmd for cmd in calls), calls

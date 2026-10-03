@@ -46,6 +46,9 @@ and blocks until tuicr exits. It then stops the comment watcher, evaluates
 review marks and unanswered comments against the unchanged `HEAD`, persists a
 JSON verdict under the tuicr XDG state directory, and wakes the originating
 agent with the report path. A killed or failed window is always `aborted`.
+The launcher leaves tuicr attached to the pane's terminal, so `e` can open a
+terminal editor such as Neovim. Exported instructions use tuicr's clipboard
+path rather than `--stdout` capture.
 
 Configured by environment, not flags: `TUICR_WINDOW_NAME` (default `tuicr`),
 `TUICR_BASE_REF` (default: **the remote's own default branch**, never a
