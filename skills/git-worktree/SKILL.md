@@ -1,6 +1,6 @@
 ---
 name: git-worktree
-description: "Create, list, and remove git worktrees for running multiple agents in parallel on the same repository without conflicts. Wraps fetch, sibling-path naming, submodule init, branch cleanup, and relinking gitignored local agent context back to the main worktree so it has a single source of truth. Use when the user asks to create, inspect, or clean up a git worktree for parallel branch or agent work."
+description: "Create, list, and remove git worktrees for running multiple agents in parallel on the same repository without conflicts. Stages worktrees under ~/.worktrees/<repo>/<branch>, and wraps fetch, submodule init, branch cleanup, and relinking gitignored local agent context back to the main worktree. Use when the user asks to create, inspect, or clean up a git worktree for parallel branch or agent work."
 allowed-tools: bash
 ---
 
@@ -45,9 +45,9 @@ All scripts live next to this file and accept `-h` for usage.
 
 Behaviour:
 1. Runs `git fetch origin` (so `base` is current).
-2. Creates the worktree at `../<repo-name>-<branch>` (siblings the main checkout).
-   `/` in the branch name is rewritten to `-` for the directory only;
-   the branch keeps its original name.
+2. Creates the worktree at `~/.worktrees/<repo-name>/<branch>`. Branch `/`
+   separators remain directory separators, so `feat/auth` is staged at
+   `~/.worktrees/<repo-name>/feat/auth`.
 3. If `<branch>` already exists locally or on `origin`, checks it out
    instead of creating a new one.
 4. If `.gitmodules` is present, runs `git submodule update --init --recursive`
@@ -120,7 +120,7 @@ created a sibling `build-<branch>/` directory, remove it manually.
 ```
 # Agent A starts feat/foo
 .agents/skills/git-worktree/worktree_new.py feat/foo
-# -> created /home/cs/org/repo-feat-foo
+# -> created /home/cs/.worktrees/repo/feat/foo
 # (open new shell there, start a Copilot session)
 
 # Agent B starts feat/bar in parallel
@@ -158,9 +158,9 @@ created a sibling `build-<branch>/` directory, remove it manually.
   submodule setup (SSH key, credentials). The skill does not paper over
   these.
 - **Dangling `.agents` / `AGENTS.md` symlinks** — the agent-context symlinks are
-  **relative** and assume worktrees stay siblings of the main worktree. If the
-  main worktree is renamed or moved (or you removed and recreated it), the links
-  break. Re-point them by re-running
+  **relative**. If the main worktree or a staged worktree is moved (or you
+  removed and recreated the main worktree), the links break. Re-point them by
+  re-running
   `relink_agent_context.py --apply --all` from any worktree.
 - **Removing a worktree never deletes shared context** — `worktree_remove.py`
   (via `git worktree remove`) deletes the symlinks in that worktree, not their

@@ -4,7 +4,7 @@ Review-loop Agent Skill for the `tuicr` code review surface.
 
 ## Public API
 
-The skill exposes Python entry points in `lib/` for opening review windows, reading and replying to comments, refreshing branch references, and running the local watch loop. `SKILL.md` defines the operational contract agents must follow when using those entry points.
+The skill exposes Python entry points in `lib/` for opening review windows, reading and replying to comments, refreshing branch references, and running the local watch loop. `SKILL.md` defines the operational contract, including agent-authored `description` and `review-note` context that stays in the review instead of the source.
 
 ## Design criteria
 

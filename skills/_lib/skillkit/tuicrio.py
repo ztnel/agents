@@ -27,9 +27,9 @@ from typing import Any, Iterable, Sequence
 from .errors import SkillError
 from .proc import run
 
-#: ``comment_type`` values a watcher ignores by default. ``reply`` is the type
-#: an agent posts, so ignoring it prevents a self-wake loop.
-DEFAULT_IGNORE_TYPES = ("reply",)
+#: ``comment_type`` values a watcher ignores by default. Agents post these
+#: types, so ignoring them prevents self-wake loops.
+DEFAULT_IGNORE_TYPES = ("reply", "description", "review-note")
 
 
 class TuicrError(SkillError):

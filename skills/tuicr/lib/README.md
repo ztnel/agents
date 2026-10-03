@@ -43,9 +43,10 @@ and lists the available comment ids when `--to` names an unknown one.
 Launches tuicr in a new tmux window over a freshly-resolved revset, starts the
 watch daemon for the current Copilot CLI session, focuses the review window,
 and blocks until tuicr exits. It then stops the comment watcher, evaluates
-review marks and unanswered comments against the unchanged `HEAD`, persists a
-JSON verdict under the tuicr XDG state directory, and wakes the originating
-agent with the report path. A killed or failed window is always `aborted`.
+review marks against the unchanged `HEAD`, records unanswered comments as
+non-blocking report context, persists a JSON verdict under the tuicr XDG state
+directory, and wakes the originating agent with the report path. A killed or
+failed window is always `aborted`.
 The launcher leaves tuicr attached to the pane's terminal, so `e` can open a
 terminal editor such as Neovim. Exported instructions use tuicr's clipboard
 path rather than `--stdout` capture.

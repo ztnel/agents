@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a sibling Git worktree and initialize its local agent context.
+"""Create a staged Git worktree and initialize its local agent context.
 
 The default is a relative symlink back to the first worktree's gitignored
 ``.agents`` and ``AGENTS.md`` files.  A caller can explicitly request copied
@@ -35,10 +35,10 @@ def usage() -> None:
                          into the new worktree instead of symlinking it. Use
                          when you deliberately want branch-specific context.
 
-Creates a sibling worktree at ../<repo>-<sanitized-branch>, fetches origin,
-and initialises submodules if .gitmodules is present. The gitignored local
-agent context (.agents/ and every AGENTS.md) is symlinked back to the main
-worktree by default so it has a single source of truth.""")
+Creates a worktree at ~/.worktrees/<repo>/<branch>, fetches origin, and
+initialises submodules if .gitmodules is present. The gitignored local agent
+context (.agents/ and every AGENTS.md) is symlinked back to the main worktree
+by default so it has a single source of truth.""")
 
 
 def git_or_raise(root: Path, *args: str) -> str:
@@ -114,6 +114,27 @@ def relative_target(destination: Path, canonical: Path) -> str:
         Relative path from the link's parent to the canonical target.
     """
     return os.path.relpath(str(canonical), start=str(destination.parent))
+
+
+def staged_worktree_path(root: Path, branch: str, home: Path | None = None) -> Path:
+    """Return the home-staged path for a repository branch.
+
+    Args:
+        root: Repository root whose name identifies the staging directory.
+        branch: Git branch name, preserving slash-separated hierarchy.
+        home: Optional home directory override for tests.
+
+    Returns:
+        ``<home>/.worktrees/<repo>/<branch>``.
+
+    Raises:
+        UsageError: If the branch cannot be represented safely beneath the
+            repository's staging directory.
+    """
+    parts = branch.split("/")
+    if not branch or any(part in {"", ".", ".."} for part in parts):
+        raise UsageError(f"invalid branch path: {branch!r}")
+    return (home or Path.home()) / ".worktrees" / root.name / Path(*parts)
 
 
 def copy_agent_context(main: Path, target: Path) -> None:
@@ -198,7 +219,7 @@ def parse_arguments(argv: list[str]) -> tuple[bool, list[str]]:
 
 
 def main(argv: list[str]) -> int:
-    """Create and initialize one sibling worktree.
+    """Create and initialize one home-staged worktree.
 
     Args:
         argv: Command-line arguments excluding the program name.
@@ -221,7 +242,7 @@ def main(argv: list[str]) -> int:
     branch = positional[0]
     base = positional[1] if len(positional) > 1 else ""
     root = toplevel(Path.cwd())
-    worktree_path = root.parent / f"{root.name}-{branch.replace('/', '-')}"
+    worktree_path = staged_worktree_path(root, branch)
     if worktree_path.exists():
         raise SkillError(f"{worktree_path} already exists", code=3)
 
@@ -238,6 +259,7 @@ def main(argv: list[str]) -> int:
                 code=4,
             )
 
+    worktree_path.parent.mkdir(parents=True, exist_ok=True)
     info(f"Creating worktree at {worktree_path}")
     if branch_exists(root, branch):
         git_or_raise(root, "worktree", "add", str(worktree_path), branch)
