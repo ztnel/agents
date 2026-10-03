@@ -29,10 +29,11 @@ class ReviewCloseTest(unittest.TestCase):
     """Approval requires clean exit, stable HEAD, and current review marks."""
 
     def evaluate(self, *, exit_code=0, marks_ok=True, unanswered=None, head="abc"):
-        calls = iter([result({"ok": marks_ok}, ok=marks_ok), result(unanswered or [])])
+        calls = iter([result({"ok": marks_ok}, ok=marks_ok)])
         with patch.object(tuicr_up, "run", side_effect=lambda _args: next(calls)):
             with patch.object(tuicr_up, "git", return_value=result(head)):
-                return tuicr_up.review_verdict("/repo", "review-a", "abc", exit_code)
+                with patch.object(tuicr_up.questions, "unanswered", return_value=unanswered or []):
+                    return tuicr_up.review_verdict("/repo", "review-a", "abc", exit_code)
 
     def test_clean_complete_close_approves(self) -> None:
         report = self.evaluate()
@@ -49,19 +50,16 @@ class ReviewCloseTest(unittest.TestCase):
         self.assertFalse(report["approved"])
         self.assertEqual(report["verdict"], "incomplete")
 
-    def test_unanswered_comments_are_reported_but_do_not_block_approval(self) -> None:
+    def test_open_questions_block_approval(self) -> None:
         report = self.evaluate(unanswered=[{"id": "c1"}])
-        self.assertTrue(report["approved"])
+        self.assertFalse(report["approved"])
         self.assertEqual(report["unanswered"], [{"id": "c1"}])
         self.assertNotIn("comments remain unanswered", report["reasons"])
 
-    def test_comment_read_failure_does_not_block_approval(self) -> None:
-        calls = iter([result({"ok": True}), result("", ok=False)])
-        with patch.object(tuicr_up, "run", side_effect=lambda _args: next(calls)):
-            with patch.object(tuicr_up, "git", return_value=result("abc")):
-                report = tuicr_up.review_verdict("/repo", "review-a", "abc", 0)
+    def test_no_registered_questions_needs_no_comment_query(self) -> None:
+        report = self.evaluate()
         self.assertTrue(report["approved"])
-        self.assertIsNone(report["unanswered"])
+        self.assertEqual(report["unanswered"], [])
 
     def test_head_change_is_incomplete(self) -> None:
         report = self.evaluate(head="def")

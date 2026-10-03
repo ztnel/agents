@@ -27,11 +27,15 @@ working-tree changes, and keeps the target checkout untouched.
 
 ### `issue_review.py`
 
-Authorizes publication from an approved tuicr close report, refuses stale or
+Authorizes publication from a provider-neutral approval receipt, refuses stale or
 incomplete review state, rejects open duplicates, validates issue metadata, and
-assembles the final payload for `issue_write`. `AuthorizationResult` always
+assembles the final payload for `issue_write`. Both `draft.md` and
+`metadata.json` must have matching `content_sha256` fingerprints in the
+approved workspace. `skillkit.approval.ApprovalReceipt` owns the versioned
+interface and current-file verification; review adapters own receipt production.
+The target comes from reviewed metadata. `AuthorizationResult` always
 binds the normalized reviewed repo, but it binds reviewed draft content only
 when `authorize_publication()` receives explicit `draft_markdown`. It never
 recovers markdown from caller state. `prepare_issue_payload()` refuses repo or
-markdown substitution, rejects authorization that lacks an explicit reviewed
+markdown or metadata substitution, rejects authorization that lacks an explicit reviewed
 draft digest, and publishes the validated body with its final provenance table.

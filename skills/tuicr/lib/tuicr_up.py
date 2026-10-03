@@ -34,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_lib"))
 
 from skillkit import paths  # noqa: E402
+from skillkit.approval import ApprovalReceipt, ReviewedFile  # noqa: E402
 from skillkit.copilot import session_for_pane_pid  # noqa: E402
 from skillkit.cli import parse_metadata, run_main  # noqa: E402
 from skillkit.errors import SkillError  # noqa: E402
@@ -41,6 +42,7 @@ from skillkit.gitio import git  # noqa: E402
 from skillkit.proc import run, which  # noqa: E402
 from skillkit.tmuxio import inside_tmux, pane_exists, pane_pid  # noqa: E402
 from tuicr_watch import WatchConfig, WakeDeliverer, resolve_target  # noqa: E402
+import questions  # noqa: E402
 
 #: ANSI colours for the `[tuicr]` log prefix. Suppressed when stdout is not a
 #: TTY so captured output stays clean.
@@ -205,16 +207,7 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
         "reviewed", "--gate", "--json",
     ])
     marks = _read_json_output(marks_result)
-    comments_result = run([
-        sys.executable, str(helper),
-        "--repo", target_dir,
-        "--session", slug,
-        "comments", "--unanswered", "--json",
-    ])
-    try:
-        unanswered = json.loads(comments_result.stdout) if comments_result.ok else None
-    except json.JSONDecodeError:
-        unanswered = None
+    unanswered = questions.unanswered(target_dir, slug)
     head_result = git(target_dir, "rev-parse", "HEAD")
     head_after = head_result.stdout.strip() if head_result.ok else ""
 
@@ -225,10 +218,22 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
         reasons.append("HEAD changed during review")
     if not marks.get("ok"):
         reasons.append("not every changed file is reviewed at current content")
+    if unanswered:
+        reasons.append("questions to the human remain unanswered")
     approved = not reasons
     return {
         "approved": approved,
         "verdict": "approved" if approved else ("aborted" if exit_code != 0 else "incomplete"),
+        "approval": ApprovalReceipt(
+            workspace=str(Path(target_dir).resolve()),
+            head=head_after,
+            approved=approved,
+            files=tuple(
+                ReviewedFile(file["path"], file["content_sha256"])
+                for file in marks.get("files", [])
+                if file.get("state") == "reviewed" and file.get("content_sha256")
+            ),
+        ).to_dict(),
         "repo": target_dir,
         "session": slug,
         "head_before": head_before,

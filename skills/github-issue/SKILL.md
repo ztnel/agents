@@ -54,9 +54,16 @@ Persistent drafts live under `XDG_STATE_HOME/agents/github-issue` (default
 `~/.local/state/agents/github-issue`) in a dedicated git workspace. The target
 repository stays clean; draft edits, metadata, and review artifacts belong to
 that workspace, not to the checkout being reported on. Each draft workspace is
-initialized once with exactly one baseline commit so `HEAD` exists for tuicr.
+initialized once with exactly one baseline commit so `HEAD` exists for review.
 Later `save_draft` calls leave `draft.md` and `metadata.json` as unstaged
 working-tree changes in that same repo; they are never auto-committed.
+
+Expose `draft.md` and `metadata.json` on the review surface and wait for its
+approval gate. Publication consumes a provider-neutral `agents.approval/v1`
+receipt through `skillkit.approval`, requiring both files' content fingerprints
+and unchanged workspace `HEAD`. Read the target repository and metadata from
+the reviewed `metadata.json`. The publication gate applies duplicate and
+payload checks independently; it does not depend on a specific review tool.
 
 ## Public API
 

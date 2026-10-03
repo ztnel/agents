@@ -1,37 +1,20 @@
 #!/usr/bin/env python3
-"""Executable contract for the publication authorization gate: ``lib/issue_review.py``.
+"""Publication requires a generic approval receipt covering unchanged inputs.
 
-This is the single choke point between a drafted issue and the MCP
-``issue_write`` call. Pins:
-
-- Only an ``approved`` tuicr close report for the *exact* current draft
-  workspace/target and an *unchanged* HEAD, with every reported file reviewed
-  and no unanswered comments, authorizes publication.
-- Incomplete/aborted verdicts, stale or absent reports, unreviewed files,
-  target/draft mismatches, HEAD drift, and unanswered comments are all
-  refused with a legible reason.
-- A fresh duplicate search performed immediately before ``issue_write`` is
-  mandatory; an open duplicate refuses publication outright.
-- The published body retains the reviewed draft's final provenance table --
-  the human explicitly wants a small provenance record at the bottom of the
-  filed issue. ``strip_provenance`` remains a separate title+body-only
-  utility; it is not applied on the publication path.
-- An authorization is bound to the *exact* draft content and target repo it
-  was granted for: neither may be swapped for something else at payload-
-  assembly time, even though the low-level `authorize_publication` call
-  already returned ``authorized=True`` for the original pair.
-- That binding must come only from data the caller explicitly and verifiably
-  supplies. Recovering "reviewed" content by guessing at same-named local
-  variables in the calling stack is not a security boundary: any caller,
-  malicious or merely coincidental, can have a local named ``draft_markdown``
-  holding arbitrary content, so such a binding authorizes whatever the caller
-  wants rather than what a human actually reviewed.
+Pins draft and metadata binding, duplicate refusal, retained provenance, and
+integration with the current review adapter's real approval producer.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
+import subprocess
+import json
+import hashlib
+from types import SimpleNamespace
+from unittest.mock import patch
 import unittest
 from pathlib import Path
 
@@ -49,22 +32,33 @@ def _load(name: str):
     return module
 
 
-DRAFT_PATH = "/state/agents/github-issue/draft-1/draft.md"
+WORKSPACE = tempfile.TemporaryDirectory()
+DRAFT_PATH = str(Path(WORKSPACE.name) / "draft.md")
 TARGET_REPO = "octo/widgets"
-HEAD = "abc123"
+subprocess.run(["git", "init", "-q", WORKSPACE.name], check=True)
+subprocess.run(
+    ["git", "-C", WORKSPACE.name, "-c", "user.name=Test", "-c", "user.email=test@example.com",
+     "commit", "--allow-empty", "-qm", "Baseline"], check=True,
+)
+HEAD = subprocess.check_output(["git", "-C", WORKSPACE.name, "rev-parse", "HEAD"], text=True).strip()
 
 
 def base_report(**overrides):
+    draft = Path(DRAFT_PATH)
+    if not draft.exists():
+        draft.write_text("test draft", encoding="utf-8")
+    metadata = draft.with_name("metadata.json")
+    metadata.write_text(json.dumps({"repo": TARGET_REPO}), encoding="utf-8")
     report = {
-        "verdict": "approved",
+        "schema": "agents.approval/v1",
         "approved": True,
-        "draft_path": DRAFT_PATH,
-        "target_repo": TARGET_REPO,
-        "head_after": HEAD,
-        "marks": {
-            "files": [{"path": DRAFT_PATH, "state": "reviewed"}],
-        },
-        "unanswered": [],
+        "workspace": WORKSPACE.name,
+        "head": HEAD,
+        "files": [
+            {"path": path.name,
+             "content_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for path in (draft, metadata)
+        ],
     }
     report.update(overrides)
     return report
@@ -107,52 +101,100 @@ class AuthorizePublicationTest(unittest.TestCase):
         self.assertTrue(result.reasons)
 
     def test_stale_head_is_refused(self) -> None:
-        result = self.authorize(base_report(head_after="def456"))
+        result = self.authorize(base_report(head="def456"))
         self.assertFalse(result.authorized)
         self.assertTrue(any("head" in r.lower() for r in result.reasons))
 
     def test_wrong_target_repo_is_refused(self) -> None:
-        result = self.authorize(base_report(target_repo="someone/else"))
+        report = base_report()
+        Path(DRAFT_PATH).with_name("metadata.json").write_text('{"repo":"someone/else"}')
+        result = self.authorize(report)
         self.assertFalse(result.authorized)
 
     def test_wrong_draft_path_is_refused(self) -> None:
-        result = self.authorize(base_report(draft_path="/state/agents/github-issue/draft-2/draft.md"))
+        result = self.authorize(base_report(workspace="/state/agents/github-issue/draft-2"))
         self.assertFalse(result.authorized)
 
     def test_unreviewed_file_is_refused(self) -> None:
         result = self.authorize(
-            base_report(marks={"files": [{"path": DRAFT_PATH, "state": "unreviewed"}]})
+            base_report(files=[])
         )
         self.assertFalse(result.authorized)
 
     def test_partially_reviewed_files_are_refused(self) -> None:
         result = self.authorize(
             base_report(
-                marks={
-                    "files": [
-                        {"path": DRAFT_PATH, "state": "reviewed"},
-                        {"path": "other.md", "state": "unreviewed"},
-                    ]
-                }
+                files=[{"path": "draft.md", "content_sha256": "0" * 64}]
             )
         )
         self.assertFalse(result.authorized)
 
     def test_no_reviewed_files_at_all_is_refused(self) -> None:
-        result = self.authorize(base_report(marks={"files": []}))
+        result = self.authorize(base_report(files=[]))
         self.assertFalse(result.authorized)
 
-    def test_unanswered_comments_are_refused(self) -> None:
+    def test_orientation_comments_do_not_override_approved_verdict(self) -> None:
         result = self.authorize(base_report(unanswered=[{"id": "c1"}]))
-        self.assertFalse(result.authorized)
-        self.assertTrue(any("unanswered" in r.lower() for r in result.reasons))
+        self.assertTrue(result.authorized)
 
-    def test_refusal_reasons_are_all_reported_together(self) -> None:
+    def test_mismatched_workspace_is_rejected_before_reading_inputs(self) -> None:
         result = self.authorize(
-            base_report(head_after="def456", unanswered=[{"id": "c1"}])
+            base_report(head="def456", workspace="/wrong/workspace")
         )
         self.assertFalse(result.authorized)
-        self.assertGreaterEqual(len(result.reasons), 2)
+        self.assertIn("workspace", result.reasons[0])
+
+    def test_real_tuicr_close_report_authorizes(self) -> None:
+        tuicr_lib = LIB.parents[1] / "tuicr" / "lib"
+        sys.path.insert(0, str(tuicr_lib))
+        import tuicr_up
+        draft_module = _load("issue_draft")
+        markdown = draft_module.render_draft(
+            title="Generic approval integration", body="Approved issue content.",
+            identified_by="gpt-6.1-sol", authored_by=["gpt-6.1-sol"],
+            approved_by="reviewer@example.com",
+        )
+        Path(DRAFT_PATH).write_text(markdown, encoding="utf-8")
+        initial = base_report()
+        marks = {"ok": True, "files": [
+            {**file, "state": "reviewed"} for file in initial["files"]
+        ]}
+        response = SimpleNamespace(ok=True, stdout=json.dumps(marks), stderr="")
+        with patch.object(tuicr_up, "run", return_value=response):
+            with patch.object(tuicr_up, "git", return_value=SimpleNamespace(ok=True, stdout=HEAD)):
+                with patch.object(tuicr_up.questions, "unanswered", return_value=[]):
+                    report = tuicr_up.review_verdict(WORKSPACE.name, "review-1", HEAD, 0)
+        self.assertNotIn("draft_path", report)
+        self.assertNotIn("target_repo", report)
+        authorization = self.mod.authorize_publication(
+            report["approval"], draft_path=DRAFT_PATH, target_repo=TARGET_REPO,
+            current_head=HEAD, draft_markdown=markdown,
+        )
+        payload = self.mod.prepare_issue_payload(
+            authorization=authorization, draft_markdown=markdown,
+            metadata={"repo": TARGET_REPO}, duplicate_matches=[],
+        )
+        self.assertEqual(payload["title"], "Generic approval integration")
+        self.assertEqual(payload["repo"], TARGET_REPO)
+
+    def test_metadata_and_draft_edits_after_approval_are_refused(self) -> None:
+        for name in ("draft.md", "metadata.json"):
+            report = base_report()
+            path = Path(WORKSPACE.name) / name
+            original = path.read_text()
+            path.write_text(original + " ")
+            self.assertFalse(self.authorize(report).authorized)
+            path.write_text(original)
+
+    def test_metadata_must_be_reviewed(self) -> None:
+        report = base_report()
+        report["files"] = report["files"][:1]
+        self.assertFalse(self.authorize(report).authorized)
+
+    def test_missing_content_fingerprint_is_refused(self) -> None:
+        report = base_report()
+        del report["files"][0]["content_sha256"]
+        self.assertFalse(self.authorize(report).authorized)
 
 
 class DuplicateGuardTest(unittest.TestCase):
@@ -194,6 +236,7 @@ class PrepareIssuePayloadTest(unittest.TestCase):
             authored_by=["gpt-5.1", "claude-sonnet-5"],
             approved_by="approver@example.com",
         )
+        Path(DRAFT_PATH).write_text(self.draft_markdown, encoding="utf-8")
         self.authorized = self.issue_review.authorize_publication(
             base_report(),
             draft_path=DRAFT_PATH,
@@ -302,6 +345,13 @@ class PrepareIssuePayloadTest(unittest.TestCase):
                 draft_markdown=self.draft_markdown,
                 metadata={"repo": "someone-else/hostile"},
                 duplicate_matches=[],
+            )
+
+    def test_metadata_labels_cannot_be_swapped_after_authorization(self) -> None:
+        with self.assertRaises(self.issue_review.PublicationDenied):
+            self.issue_review.prepare_issue_payload(
+                authorization=self.authorized, draft_markdown=self.draft_markdown,
+                metadata={"repo": TARGET_REPO, "labels": ["unreviewed"]}, duplicate_matches=[],
             )
 
 

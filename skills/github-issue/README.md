@@ -9,9 +9,9 @@ Standalone GitHub issue drafting and publication for Copilot CLI.
 - `lib/issue_draft.py` renders and validates the markdown draft format.
 - `lib/issue_workspace.py` stores drafts and metadata in a dedicated git-backed
   state workspace under `XDG_STATE_HOME/agents/github-issue`, with one baseline
-  commit per draft repo and later saves left unstaged for tuicr.
-- `lib/issue_review.py` authorizes publication from a reviewed tuicr close
-  report, guards duplicate search, and prepares a validated issue payload that
+  commit per draft repo and later saves left unstaged for the review surface.
+- `lib/issue_review.py` authorizes publication from a generic approval
+  receipt, guards duplicate search, and prepares a validated issue payload that
   keeps the final provenance table in the published body.
 
 ## Design criteria

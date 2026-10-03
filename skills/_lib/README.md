@@ -57,6 +57,7 @@ Set `SKILLS_ROOT` to override the location when a skill is vendored elsewhere.
 | `gitio` | Typed `git` wrapper, incl. `default_remote_branch()` |
 | `lock` | `PidFile` singleton guard, compatible with the shell pidfile format |
 | `errors` | `SkillError` and friends, each carrying its process exit code |
+| `approval` | Provider-neutral `agents.approval/v1` receipts and current workspace/file verification |
 
 ## Design contracts worth knowing
 

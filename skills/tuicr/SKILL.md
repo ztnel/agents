@@ -223,9 +223,10 @@ comments still awaiting a reply are included. Answer all of them.
    The human reviews the diff and the threads afterwards.
 
 > **No status updates in tuicr.** Proactive agent comments are limited to one
-> review-level `description` and targeted `review-note` context. Everything else
+> review-level `description`, targeted `review-note` context, and explicitly
+> registered decision questions to the human. Everything else
 > you post is a `--type reply` anchored to a human comment. The watcher ignores
-> all three agent-authored types, preventing self-wake loops. Report progress in
+> agent context types and registered questions, preventing self-wake loops. Report progress in
 > your own window, never in the review.
 
 ## Close contract
@@ -236,11 +237,11 @@ deterministic result.
 
 - `approved` means tuicr exited cleanly, `HEAD` did not move, the current change
   set is non-empty, every changed file is present and human-marked reviewed at
-  its current content. Unanswered comments are reported for context but do not
-  block approval.
+  its current content, and no registered questions to the human remain open.
+  `unanswered` contains only those questions, not ordinary review comments.
 - `incomplete` means the review closed cleanly but one or more checks failed.
   Report the exact `reasons` and unreviewed/absent/stale files. Also mention
-  unanswered comments when present, without treating them as an approval gate.
+  unanswered registered questions when present; those block approval.
 - `aborted` means the window was killed, crashed, or otherwise did not record a
   clean exit. It is never approval.
 
@@ -250,6 +251,25 @@ review cycles; let tuicr invalidate marks when content changes. Approval ends
 this skill's responsibility: do not stage, commit, push, or infer what approval
 enables. The invoking custom agent or human-owned workflow decides the next
 action.
+For capability consumers, pass the report's `approval` receipt through the
+provider-neutral `skillkit.approval` interface, not the tool-specific report.
+
+### Questions to the human
+
+When an agent asks a decision question in tuicr, post it with the agent's model
+ID and immediately register its comment ID through
+`review.py --repo <repo> --session <slug> register-question --comment-id <id>`.
+Do not infer question intent from punctuation or configured comment types.
+`description` and `review-note` are never questions.
+
+After the human directly answers, link the answer's exact ID using
+`resolve-question --comment-id <question-id> --answer-id <answer-id>`.
+The answer must be newer, non-empty, and authorless in the persisted session;
+agent model-authored replies cannot resolve it. This author convention is not
+cryptographic authentication. Edits or deletion invalidate resolution;
+re-register edited questions and link a new human answer.
+Registered questions are excluded from agent wake work. The skill-owned
+registry never changes persisted tuicr session files or human review marks.
 
 ## Live watch
 

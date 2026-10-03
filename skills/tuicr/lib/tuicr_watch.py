@@ -38,6 +38,7 @@ from skillkit.errors import SkillError  # noqa: E402
 from skillkit.lock import PidFile  # noqa: E402
 from skillkit.proc import require  # noqa: E402
 from skillkit.tuicrio import Comment, TuicrError  # noqa: E402
+import questions  # noqa: E402
 
 #: Input-box states reported by :meth:`WakeDeliverer.box_state`.
 BOX_HAS_WAKE = 0
@@ -520,7 +521,11 @@ class Watcher:
         daemon reporting healthy while silently ignoring the human forever.
         """
         try:
-            return tuicrio.comments(self.config.repo, self.slug)
+            registered = questions.registered_ids(self.config.repo, self.slug)
+            return [
+                comment for comment in tuicrio.comments(self.config.repo, self.slug)
+                if comment.id not in registered
+            ]
         except TuicrError:
             return None
 

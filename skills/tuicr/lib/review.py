@@ -32,6 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_lib"))
 from skillkit import gitio, tuicrio  # noqa: E402
 from skillkit.cli import run_main  # noqa: E402
 from skillkit.errors import SkillError, UsageError  # noqa: E402
+import questions  # noqa: E402
+import hashlib
 
 #: tuicr re-renders every comment in a session on each frame, so total comment
 #: text — not any single comment — drives the human's TUI latency. Long replies
@@ -84,7 +86,11 @@ def cmd_comments(args: argparse.Namespace) -> int:
     found = tuicrio.comments(args.repo, session)
     if args.unanswered:
         replies = tuicrio.replies_by_anchor(found)
-        found = [c for c in found if c.comment_type != "reply" and not tuicrio.is_answered(c, replies)]
+        registered = questions.registered_ids(args.repo, session)
+        found = [
+            c for c in found if c.id not in registered
+            and c.comment_type != "reply" and not tuicrio.is_answered(c, replies)
+        ]
     if args.json:
         print(json.dumps([c.raw for c in found], indent=2))
         return 0
@@ -111,6 +117,15 @@ def cmd_reply(args: argparse.Namespace) -> int:
     tuicrio.reply_to(args.repo, session, parent, body, username=args.username)
     print(f"REPLIED_TO={parent.id}")
     print(f"ANCHOR={parent.anchor}")
+    return 0
+
+
+def cmd_question(args: argparse.Namespace) -> int:
+    session = resolve_session(args.repo, args.session)
+    if args.command == "register-question":
+        questions.register(args.repo, session, args.comment_id)
+    else:
+        questions.resolve(args.repo, session, args.comment_id, args.answer_id)
     return 0
 
 
@@ -272,6 +287,19 @@ def cmd_reviewed(args: argparse.Namespace) -> int:
         (path, *_classify(args.repo, path, status, reviews, saved_at))
         for path, status in sorted(statuses.items())
     ]
+    digests = {}
+    for index, (path, state, why) in enumerate(rows):
+        target = Path(args.repo) / path
+        if state == "reviewed" and target.is_file():
+            try:
+                digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            except OSError as exc:
+                rows[index] = (path, "stale", f"current content cannot be read: {exc}")
+                continue
+            state, why = _classify(args.repo, path, statuses[path], reviews, saved_at)
+            rows[index] = (path, state, why)
+            if state == "reviewed":
+                digests[path] = digest
     blocked = [row for row in rows if row[1] in BLOCKING_STATES]
     if args.unreviewed:
         rows = blocked
@@ -287,7 +315,8 @@ def cmd_reviewed(args: argparse.Namespace) -> int:
                     "staged": args.staged,
                     "ok": ok,
                     "files": [
-                        {"path": path, "state": state, "why": why}
+                        {"path": path, "state": state, "why": why,
+                         **({"content_sha256": digests[path]} if path in digests else {})}
                         for path, state, why in rows
                     ],
                 },
@@ -377,6 +406,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_reviewed.add_argument("--unreviewed", action="store_true", help="show only blocking files")
     p_reviewed.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     p_reviewed.set_defaults(func=cmd_reviewed)
+
+    for name in ("register-question", "resolve-question"):
+        command = sub.add_parser(name, help="track a question directed to the human")
+        _add_shared(command, suppress=True)
+        command.add_argument("--comment-id", required=True)
+        if name == "resolve-question":
+            command.add_argument("--answer-id", required=True)
+        command.set_defaults(func=cmd_question)
 
     return parser
 

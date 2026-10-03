@@ -43,8 +43,8 @@ and lists the available comment ids when `--to` names an unknown one.
 Launches tuicr in a new tmux window over a freshly-resolved revset, starts the
 watch daemon for the current Copilot CLI session, focuses the review window,
 and blocks until tuicr exits. It then stops the comment watcher, evaluates
-review marks against the unchanged `HEAD`, records unanswered comments as
-non-blocking report context, persists a JSON verdict under the tuicr XDG state
+review marks against the unchanged `HEAD`, checks explicitly registered
+questions to the human, persists a JSON verdict under the tuicr XDG state
 directory, and wakes the originating agent with the report path. A killed or
 failed window is always `aborted`.
 The launcher leaves tuicr attached to the pane's terminal, so `e` can open a
@@ -53,6 +53,29 @@ path rather than `--stdout` capture.
 New windows receive the caller's `EDITOR` and `VISUAL` when set, without
 changing tmux's global environment. Unset variables retain tmux defaults;
 existing review windows are not modified.
+
+Reviewed regular files carry `content_sha256` fingerprints in `marks.files`.
+Consumers verify their own inputs against those fingerprints before acting.
+The close report's `approval` field is a provider-neutral `agents.approval/v1`
+receipt from `skillkit.approval`. Pass that receipt to capability consumers;
+keep tool-specific marks, exit status, and question diagnostics in this adapter.
+
+### `review.py register-question / resolve-question`
+
+Register a model-authored question to the human by its exact comment ID:
+
+```console
+review.py --repo D --session S register-question --comment-id QUESTION_ID
+review.py --repo D --session S resolve-question --comment-id QUESTION_ID --answer-id ANSWER_ID
+```
+
+Only a newer, non-empty authorless comment can be linked as a human answer.
+Model-authored replies cannot resolve questions. Edits or deletion invalidate
+the binding; re-register edited questions and link a new human answer. Orientation
+types (`description`, `review-note`) cannot be registered. The registry is
+skill-owned state under `XDG_STATE_HOME/tuicr/questions`, keyed by checkout
+and session; persisted tuicr sessions and human marks are never modified.
+Registered questions are excluded from agent wake work, not from review.
 
 Configured by environment, not flags: `TUICR_WINDOW_NAME` (default `tuicr`),
 `TUICR_BASE_REF` (default: **the remote's own default branch**, never a

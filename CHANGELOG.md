@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - Unreleased
+
+### Fixed
+- GitHub issue publication consumes generic tuicr approval and verifies the reviewed draft and metadata against content fingerprints.
+- Only explicitly registered, unanswered questions to the human block tuicr approval; orientation comments never block it.
+
 ## [0.2.3] - Unreleased
 
 ### Fixed
