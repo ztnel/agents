@@ -35,6 +35,27 @@ Git change set with the session's persisted human review marks. Each path is
 classified as `reviewed`, `unreviewed`, `absent`, or `stale`; `--gate` exits 5
 unless the non-empty change set is fully reviewed. It never writes marks.
 
+#### Recovering a changed file type
+
+Some tuicr binaries retain a file's old `status` after it changes from modified
+to deleted, or the reverse. The gate reports `unreviewed`, not a permanent
+`stale`, and does not trust a retained `reviewed=true` mark.
+
+Reload the diff with `:e`. If the binary refreshes status and clears the mark,
+review and re-mark the current file normally. Otherwise:
+
+1. The human unmarks the affected file and saves with `:w`.
+2. Run `review.py --repo D --session S reviewed --gate` to observe the unreviewed mark; exit 5 is expected.
+3. The human reviews the current diff, re-marks the file, and saves with `:w`.
+4. Run the gate again; the unchanged file now passes despite the old status.
+
+The gate records this transition in skill-owned
+`XDG_STATE_HOME/tuicr/transitions` state, scoped to checkout, review session,
+`HEAD`, and staged/worktree selection. Type, diff, or content changes require
+a new unmark/re-mark observation. Saving unrelated comments or reopening alone
+cannot clear the block. Agents must not toggle marks or edit, replace, or delete
+persisted tuicr session files for recovery.
+
 Exits non-zero with a message naming the valid subcommands when one is omitted,
 and lists the available comment ids when `--to` names an unknown one.
 

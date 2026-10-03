@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5] - Unreleased
+
+### Fixed
+- Changed file types no longer permanently block tuicr approval. An observed human unmark/re-mark can approve the unchanged current diff even when the binary retains an old status.
+
 ## [0.2.4] - Unreleased
 
 ### Fixed

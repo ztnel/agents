@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_lib"))
 
-from skillkit import gitio, tuicrio  # noqa: E402
+from skillkit import gitio, paths, tuicrio  # noqa: E402
 from skillkit.cli import run_main  # noqa: E402
 from skillkit.errors import SkillError, UsageError  # noqa: E402
 import questions  # noqa: E402
@@ -246,17 +246,28 @@ def _classify(
     status: str,
     reviews: dict[str, tuicrio.FileReview],
     saved_at: float,
+    transitions: dict[str, str] | None = None,
+    staged: bool = False,
 ) -> tuple[str, str]:
     """Classify one current changed path against the persisted human mark."""
     review = reviews.get(path)
     if review is None:
         return "absent", "the review surface never registered this changed file"
     if not review.reviewed:
+        if not _same_status(review.status, status):
+            return "unreviewed", (
+                f"change type changed from {review.status} to {status}; "
+                "unreviewed mark observed; review the current diff and re-mark this file"
+            )
         if review.reviewed_hunks:
             return "unreviewed", f"{review.reviewed_hunks} hunk(s) marked, but not the file"
         return "unreviewed", "not marked reviewed"
     if not _same_status(review.status, status):
-        return "stale", f"Git reports {status}, but tuicr showed {review.status}"
+        if not transitions or transitions.get(path) != _transition_fingerprint(repo, path, status, staged):
+            return "unreviewed", (
+                f"change type changed from {review.status} to {status}; reload, unmark and save this file, "
+                "run reviewed --gate, then re-mark, save, and run the gate again"
+            )
 
     target = Path(repo) / path
     try:
@@ -277,14 +288,78 @@ def _classify(
     return "reviewed", ""
 
 
+def _transition_fingerprint(repo: str, path: str, status: str, staged: bool) -> str:
+    args = ["diff", "--no-ext-diff", "--no-textconv", "--binary", "HEAD"]
+    if staged:
+        args.append("--cached")
+    result = gitio.git(repo, *args, "--", path)
+    if not result.ok:
+        raise UsageError(f"cannot inspect change-type transition for {path}: {result.stderr.strip()}")
+    digest = hashlib.sha256((status + "\0" + result.stdout).encode("utf-8"))
+    target = Path(repo) / path
+    try:
+        stat = target.lstat()
+    except FileNotFoundError:
+        digest.update(b"\0absent")
+    else:
+        digest.update(str(stat.st_mode).encode())
+        if target.is_symlink():
+            digest.update(os.readlink(target).encode())
+        elif target.is_file():
+            digest.update(target.read_bytes())
+    return digest.hexdigest()
+
+
+def _reviewed_transitions(
+    repo: str, session: tuicrio.Session, statuses: dict[str, str],
+    reviews: dict[str, tuicrio.FileReview], *, staged: bool,
+) -> dict[str, str]:
+    """Require an observed human unmark/re-mark for unchanged mismatched types."""
+    head = gitio.git(repo, "rev-parse", "HEAD")
+    if not head.ok:
+        if all(
+            path not in reviews or _same_status(reviews[path].status, status)
+            for path, status in statuses.items()
+        ):
+            return {}
+        raise UsageError(f"cannot resolve review HEAD: {head.stderr.strip()}")
+    state_file = paths.state_dir("tuicr", "transitions", create=True) / (
+        paths.short_hash(str(Path(repo).resolve()), session.slug, head.stdout.strip(), str(staged)) + ".json"
+    )
+    records = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
+    if not isinstance(records, dict):
+        raise UsageError("review transition state must be an object")
+    updated = {}
+    accepted = {}
+    for path, status in statuses.items():
+        review = reviews.get(path)
+        if review is None or _same_status(review.status, status):
+            continue
+        fingerprint = _transition_fingerprint(repo, path, status, staged)
+        previous = records.get(path, {})
+        if not isinstance(previous, dict):
+            raise UsageError(f"invalid review transition state for {path}")
+        unmarked = (
+            previous.get("fingerprint") == fingerprint
+            and previous.get("observed_unreviewed") is True
+        ) or not review.reviewed
+        updated[path] = {"fingerprint": fingerprint, "observed_unreviewed": unmarked}
+        if unmarked and review.reviewed:
+            accepted[path] = fingerprint
+    if updated != records:
+        paths.write_json_atomic(state_file, updated, indent=2)
+    return accepted
+
+
 def cmd_reviewed(args: argparse.Namespace) -> int:
     """Report human file marks and optionally gate the current change set."""
     session = _resolve_session_obj(args.repo, args.session)
     reviews = tuicrio.file_reviews(session)
     saved_at = tuicrio.session_saved_at(session)
     statuses = _status_map(args.repo, staged=args.staged)
+    transitions = _reviewed_transitions(args.repo, session, statuses, reviews, staged=args.staged)
     rows = [
-        (path, *_classify(args.repo, path, status, reviews, saved_at))
+        (path, *_classify(args.repo, path, status, reviews, saved_at, transitions, args.staged))
         for path, status in sorted(statuses.items())
     ]
     digests = {}
@@ -296,7 +371,9 @@ def cmd_reviewed(args: argparse.Namespace) -> int:
             except OSError as exc:
                 rows[index] = (path, "stale", f"current content cannot be read: {exc}")
                 continue
-            state, why = _classify(args.repo, path, statuses[path], reviews, saved_at)
+            state, why = _classify(
+                args.repo, path, statuses[path], reviews, saved_at, transitions, args.staged,
+            )
             rows[index] = (path, state, why)
             if state == "reviewed":
                 digests[path] = digest

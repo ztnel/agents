@@ -231,6 +231,12 @@ comments still awaiting a reply are included. Answer all of them.
 
 ## Close contract
 
+If a changed file type remains `unreviewed` because the binary retains an old
+status, follow [changed-file-type recovery](lib/README.md#recovering-a-changed-file-type).
+The human unmarks and saves, the gate observes that mark, then the human reviews,
+re-marks, and saves the unchanged diff. Never toggle marks or manipulate
+persisted session files yourself.
+
 When a `tuicr close <token>: ... verdict=<approved|incomplete|aborted> ...
 report=<path>` prompt arrives, read the JSON report at `report` and act on its
 deterministic result.

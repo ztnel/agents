@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1]
@@ -37,7 +38,7 @@ class ReviewMarksTest(unittest.TestCase):
             """#!/usr/bin/env python3
 import json, os, sys
 if sys.argv[1:3] == ["review", "list"]:
-    print(json.dumps([{"slug": "review-a", "active": False, "comment_count": 0,
+    print(json.dumps([{"slug": os.environ.get("REVIEW_SLUG", "review-a"), "active": False, "comment_count": 0,
                        "path": os.environ["SESSION_FILE"], "updated_at": "now"}]))
 elif sys.argv[1:3] == ["review", "comments"]:
     print(open(os.environ["COMMENTS_FILE"], encoding="utf-8").read())
@@ -53,6 +54,7 @@ else:
             SESSION_FILE=str(self.session),
             COMMENTS_FILE=str(self.comments),
             PYTHONDONTWRITEBYTECODE="1",
+            XDG_STATE_HOME=str(self.temp / "state"),
         )
 
     def tearDown(self) -> None:
@@ -63,7 +65,7 @@ else:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
-    def write_session(self, files: dict[str, bool]) -> None:
+    def write_session(self, files: dict[str, bool], *, status: str = "added") -> None:
         self.session.write_text(
             json.dumps(
                 {
@@ -72,7 +74,7 @@ else:
                         path: {
                             "path": path,
                             "reviewed": reviewed,
-                            "status": "added",
+                            "status": status,
                             "reviewed_hunks": [],
                             "content_hash": 1,
                         }
@@ -91,7 +93,7 @@ else:
                 "--repo",
                 str(self.repo),
                 "--session",
-                "review-a",
+                self.env.get("REVIEW_SLUG", "review-a"),
                 "reviewed",
                 "--gate",
                 "--json",
@@ -130,6 +132,97 @@ else:
         result = self.gate()
         self.assertEqual(result.returncode, 5, result.stdout)
         self.assertEqual(json.loads(result.stdout)["files"][0]["state"], "stale")
+
+    def commit_baseline(self) -> None:
+        self.write_file("a.txt", "baseline\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "a.txt"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "Baseline"], check=True)
+
+    def assert_gate_state(self, state: str) -> dict:
+        before = self.session.read_bytes()
+        result = self.gate()
+        self.assertEqual(result.returncode, 0 if state == "reviewed" else 5, result.stderr)
+        row = json.loads(result.stdout)["files"][0]
+        self.assertEqual(row["state"], state, row)
+        self.assertEqual(self.session.read_bytes(), before, "gate must never write human session state")
+        return row
+
+    def test_modified_then_deleted_across_two_review_cycles(self) -> None:
+        self.commit_baseline()
+        self.write_file("a.txt", "modified\n")
+        self.write_session({"a.txt": True}, status="modified")
+        self.assert_gate_state("reviewed")
+        (self.repo / "a.txt").unlink()
+        row = self.assert_gate_state("unreviewed")
+        self.assertIn("modified to deleted", row["why"])
+        self.write_session({"a.txt": True}, status="modified")
+        self.assert_gate_state("unreviewed")
+        self.write_session({"a.txt": False}, status="modified")
+        self.assert_gate_state("unreviewed")
+        self.write_session({"a.txt": True}, status="modified")
+        self.assert_gate_state("reviewed")
+        self.assert_gate_state("reviewed")
+        sys.path.insert(0, str(REVIEW.parent))
+        import tuicr_up
+        head = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True,
+        ).strip()
+        with patch.dict(os.environ, self.env):
+            report = tuicr_up.review_verdict(str(self.repo), "review-a", head, 0)
+        self.assertTrue(report["approved"], report["reasons"])
+
+    def test_recovery_is_scoped_to_review_session(self) -> None:
+        self.commit_baseline()
+        (self.repo / "a.txt").unlink()
+        self.write_session({"a.txt": False}, status="modified")
+        self.assert_gate_state("unreviewed")
+        self.write_session({"a.txt": True}, status="modified")
+        self.env["REVIEW_SLUG"] = "review-b"
+        self.assert_gate_state("unreviewed")
+        self.env["REVIEW_SLUG"] = "review-a"
+        self.assert_gate_state("reviewed")
+
+    def test_deleted_then_modified_requires_fresh_review(self) -> None:
+        self.commit_baseline()
+        (self.repo / "a.txt").unlink()
+        self.write_session({"a.txt": True}, status="deleted")
+        self.assert_gate_state("reviewed")
+        self.write_file("a.txt", "restored and modified\n")
+        self.write_session({"a.txt": True}, status="deleted")
+        self.assert_gate_state("unreviewed")
+        self.write_session({"a.txt": False}, status="deleted")
+        self.assert_gate_state("unreviewed")
+        self.write_session({"a.txt": True}, status="deleted")
+        row = self.assert_gate_state("reviewed")
+        self.assertIn("content_sha256", row)
+
+    def test_changed_content_invalidates_observed_unmark(self) -> None:
+        self.commit_baseline()
+        self.write_file("a.txt", "modified\n")
+        self.write_session({"a.txt": False}, status="deleted")
+        self.assert_gate_state("unreviewed")
+        self.write_file("a.txt", "changed after unmark\n")
+        self.write_session({"a.txt": True}, status="deleted")
+        self.assert_gate_state("unreviewed")
+
+    def test_native_status_refresh_needs_no_transition_override(self) -> None:
+        self.commit_baseline()
+        (self.repo / "a.txt").unlink()
+        self.write_session({"a.txt": True}, status="modified")
+        self.assert_gate_state("unreviewed")
+        self.write_session({"a.txt": False}, status="deleted")
+        self.assert_gate_state("unreviewed")
+        self.write_session({"a.txt": True}, status="deleted")
+        self.assert_gate_state("reviewed")
+
+    def test_new_head_does_not_reuse_observed_unmark(self) -> None:
+        self.commit_baseline()
+        (self.repo / "a.txt").unlink()
+        self.write_session({"a.txt": False}, status="modified")
+        self.assert_gate_state("unreviewed")
+        subprocess.run(["git", "-C", str(self.repo), "commit", "--allow-empty", "-qm", "New HEAD"], check=True)
+        self.write_session({"a.txt": True}, status="modified")
+        self.assert_gate_state("unreviewed")
 
 
 if __name__ == "__main__":
