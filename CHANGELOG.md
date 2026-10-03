@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - Unreleased
+
+### Fixed
+- New tuicr review windows inherit the caller's `EDITOR` and `VISUAL`, preserving the preferred editor without changing tmux's global environment.
+
 ## [0.2.2] - Unreleased
 
 ### Fixed

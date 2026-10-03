@@ -50,6 +50,9 @@ failed window is always `aborted`.
 The launcher leaves tuicr attached to the pane's terminal, so `e` can open a
 terminal editor such as Neovim. Exported instructions use tuicr's clipboard
 path rather than `--stdout` capture.
+New windows receive the caller's `EDITOR` and `VISUAL` when set, without
+changing tmux's global environment. Unset variables retain tmux defaults;
+existing review windows are not modified.
 
 Configured by environment, not flags: `TUICR_WINDOW_NAME` (default `tuicr`),
 `TUICR_BASE_REF` (default: **the remote's own default branch**, never a

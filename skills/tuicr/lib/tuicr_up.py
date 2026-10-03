@@ -305,9 +305,12 @@ def launch(target_dir: str) -> int:
         f"cd {_sh_quote(target_dir)} && {inner}; "
         f"rc=$?; printf '%s\\n' \"$rc\" > {_sh_quote(completion_file)}"
     )
-    created = run(
-        ["tmux", "new-window", "-d", "-P", "-F", "#{pane_id}", "-n", window_name, "-c", target_dir, command]
-    )
+    args = ["tmux", "new-window", "-d", "-P", "-F", "#{pane_id}", "-n", window_name, "-c", target_dir]
+    # New panes inherit tmux's environment, not this caller's shell settings.
+    for name in ("EDITOR", "VISUAL"):
+        if name in os.environ:
+            args += ["-e", f"{name}={os.environ[name]}"]
+    created = run([*args, command])
     if not created.ok:
         raise SkillError(f"could not create tmux window: {created.stderr}")
     pane_id = created.stdout.strip()
