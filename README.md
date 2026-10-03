@@ -17,21 +17,6 @@ This repository is an [Agent Plugins 1.0.0](https://agent-plugins.org/specificat
 This repository supports GitHub Copilot CLI only. Compatibility with other
 clients is not tested or maintained.
 
-## CI
-
-`/.github/workflows/ci.yml` runs two jobs on `push` to `main` and on
-`pull_request`:
-
-- `regression` compiles the repo, runs every Python `test_*.py`, the `tuicr`
-  shell tests, skill linting, manifest checks, and `git diff --check`.
-- `smoke` installs Copilot CLI on Node 22, installs this workspace as a plugin, checks
-  the declared plugin/skill/MCP inventory, and exercises each custom agent with
-  a live noninteractive session when auth is available.
-
-Set repository secret `COPILOT_GITHUB_TOKEN` to a fine-grained PAT with
-Copilot Requests permission. Forked pull requests skip the live-agent step and
-still run discovery.
-
 ## Install
 
 The commands below assume the repository has been published as `ztnel/agents`. Replace `<version>` with a release tag such as `v0.2.0`.
@@ -52,9 +37,7 @@ copilot --plugin-dir ./agents
 Copilot loads the skills, the custom agent under `com.github.copilot/`, and the
 root GitHub MCP configuration.
 
-## Design criteria
+## Documentation
 
-Use Agent Plugins 1.0.0 for the package shape and Copilot's reverse-domain
-extension namespace for Copilot CLI custom agents. Optimize all documented
-installation and runtime behavior for Copilot CLI rather than preserving
-cross-client compatibility.
+- [Architecture and design criteria](docs/ARCH.md)
+- [CI and validation](docs/CI.md)
