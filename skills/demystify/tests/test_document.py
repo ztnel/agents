@@ -71,6 +71,14 @@ class RenderTest(unittest.TestCase):
         self.assertIn("<merror><mtext>\\nosuch</mtext></merror>", html)
         self.assertIn("<mfrac><mn>1</mn><mrow></mrow></mfrac>", html)
 
+    def test_widget_renders_as_sandboxed_frame(self):
+        rendered = document.render("# Title\n\n```widget Duty explorer\n<script>x()</script>\n```")
+        key, source = next(iter(rendered.widgets.items()))
+        self.assertEqual(source, "<script>x()</script>")
+        self.assertIn(f'<iframe src="/widget/{key}" sandbox="allow-scripts"', rendered.html)
+        self.assertNotIn("<script>", rendered.html)
+        self.assertEqual((rendered.title, rendered.units[1].text), ("Title", "[widget] Duty explorer"))
+
     def test_text_keeps_edge_spaces(self):
         self.assertIn("<mtext>\u00a0V</mtext>", document.render("$480\\text{ V}$").html)
 

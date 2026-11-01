@@ -78,7 +78,9 @@ function showError(text) {
 const lineOf = (i) => Number(units[i]?.dataset.line || 0);
 const closed = () => state?.closed || !reachable;
 const isDiagram = (i) => units[i]?.classList.contains("u-diagram");
-const isBlockMath = (i) => units[i]?.classList.contains("u-math");
+const isWidget = (i) => units[i]?.classList.contains("u-widget");
+// Display math and widgets are single stops, like an image: no characters.
+const isAtomic = (i) => units[i]?.classList.contains("u-math") || isWidget(i);
 const lengthOf = (i) => unitIndex(i).text.length;
 const clampCol = (i, c) => Math.max(0, Math.min(c, lengthOf(i) - 1));
 const charAt = (i, c) => unitIndex(i).text[c] || "";
@@ -100,7 +102,7 @@ function unitIndex(i) {
   const unit = units[i];
   const nodes = [];
   let text = "";
-  if (unit && !isBlockMath(i)) { // display math is one stop, like an image: no characters
+  if (unit && !isAtomic(i)) {
     const diagram = isDiagram(i);
     const walker = document.createTreeWalker(unit, NodeFilter.SHOW_TEXT, diagram
       ? { acceptNode: (n) => (n.parentElement?.closest("text") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) }
@@ -359,7 +361,8 @@ function where(anchor) {
   const lines = anchor.start === anchor.end ? `L${anchor.start}` : `L${anchor.start}–${anchor.end}`;
   return (anchor.outdated ? `outdated · was ${lines}` : lines)
     + (anchor.element ? ` · ${anchor.element}` : "")
-    + (anchor.excerpt ? ` · “${clip(anchor.excerpt)}”` : "");
+    + (anchor.excerpt ? ` · “${clip(anchor.excerpt)}”` : "")
+    + (anchor.state ? ` · ${clip(Object.entries(anchor.state).map(([k, v]) => `${k}=${v}`).join(", "))}` : "");
 }
 
 function renderThreads() {
@@ -590,7 +593,7 @@ function newRow(box) {
 // Screen rows of the block holding unit i, each a list of character boxes.
 // Text wraps in reading order; diagrams and display math are single stops.
 function rowsOf(i) {
-  if (isDiagram(i) || isBlockMath(i)) return [];
+  if (isDiagram(i) || isAtomic(i)) return [];
   const rows = [];
   const [a, b] = blockOf(i);
   for (let u = a; u <= b; u++) {
@@ -673,6 +676,8 @@ function startComment(whole = false) {
     } else if (a.i === b.i && labelled(a.i)[element]) {
       body.element = labelled(a.i)[element].dataset.label;
     }
+    const state = a.i === b.i && isWidget(a.i) && widgetState.get(units[a.i].querySelector("iframe"));
+    if (state && Object.keys(state).length) body.state = state;
     compose = { key: `new:${body.start}-${body.end}-${body.element || ""}-${body.excerpt || ""}`,
       label: `New comment · ${where(body)}`, body };
   }
@@ -886,7 +891,7 @@ const DOC_KEYS = {
   },
   c: () => startComment(), C: () => startComment(true),
   r: () => startReply(threadsAt(lineOf(cursor)).find((t) => t.id === activeThread) || threadsAt(lineOf(cursor))[0]),
-  Enter: () => { const here = threadsAt(lineOf(cursor)); if (here.length) activate(here[0].id); else say("no conversation on this line"); },
+  Enter: () => { if (isWidget(cursor)) { enterWidget(); return; } const here = threadsAt(lineOf(cursor)); if (here.length) activate(here[0].id); else say("no conversation on this line"); },
   m: (n) => cycleThread(1, n), M: (n) => cycleThread(-1, n),
   n: () => jumpMatch(1), N: () => jumpMatch(-1),
 };
@@ -946,7 +951,9 @@ function normalKey(event) {
   const raw = count !== "";
   const n = takeCount();
   const action = (pane === "threads" ? THREAD_KEYS : DOC_KEYS)[key];
+  const before = cursor;
   if (action) action(n, raw);
+  if (cursor !== before && isWidget(cursor)) say("widget · Enter to interact");
   renderStatus();
 }
 
@@ -989,6 +996,47 @@ $("command").addEventListener("input", () => { if (mode === "SEARCH") runSearch(
 $("composer").addEventListener("submit", (event) => { event.preventDefault(); send(); });
 $("composer-input").addEventListener("focus", () => { if (compose && mode !== "INSERT") { mode = "INSERT"; renderStatus(); } });
 $("help-button").onclick = () => $("help").showModal();
+// -- widgets: sandboxed iframes that talk only through postMessage ------------
+const widgetState = new WeakMap(); // iframe -> latest control values, sent with comments
+
+function enterWidget() {
+  const frame = units[cursor]?.querySelector("iframe");
+  if (!frame) return;
+  frame.focus();
+  say("widget · Esc returns to the page");
+}
+
+function leaveWidget(frame) {
+  frame.blur();
+  window.focus();
+  const i = units.indexOf(frame.closest(".u"));
+  if (i >= 0) moveTo(i, 0, false);
+  say("");
+}
+
+addEventListener("message", (event) => {
+  const frame = [...doc.querySelectorAll(".u-widget iframe")].find((f) => f.contentWindow === event.source);
+  const data = event.data;
+  if (!frame || !data?.demystify) return;
+  if (data.type === "height") {
+    frame.style.height = `${Math.min(2400, Math.max(40, Number(data.height) || 0))}px`;
+    redrawMarks();
+  } else if (data.type === "state" && data.state && typeof data.state === "object") {
+    widgetState.set(frame, data.state);
+  } else if (data.type === "escape") {
+    leaveWidget(frame);
+  }
+});
+
+// A click into a widget moves the page cursor onto it.
+addEventListener("blur", () => setTimeout(() => {
+  const frame = document.activeElement;
+  if (frame?.tagName !== "IFRAME" || !doc.contains(frame)) return;
+  const i = units.indexOf(frame.closest(".u"));
+  if (i >= 0 && i !== cursor) moveTo(i, 0, false);
+  say("widget · Esc returns to the page");
+}));
+
 // Esc, × and the threads button all fold the conversation away and return to the page.
 function collapsePanel() {
   activeThread = null;

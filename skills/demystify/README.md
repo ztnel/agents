@@ -32,6 +32,7 @@ Modes are explicit and always shown in the status line: `NORMAL`,
 | `/` · `n` `N` · `:noh` | Search (smartcase); cycle matches; clear |
 | `Enter` · `Shift+Enter` · `Esc` | In INSERT: send, newline, close the conversation keeping the draft |
 | `:w` · `:q` · `:wq` · `:e` · `:N` | Save PDF, end session, both, reload the page, go to line N |
+| `Enter` · `Esc` | On a widget: interact with it; return to the document |
 | `Esc` · `?` | Clear count, selection or part; help |
 
 Commented text stays highlighted (amber awaiting the agent, green answered) and
@@ -49,7 +50,8 @@ is clickable. `Ctrl-w` is not bound because browsers close the tab on it.
 - **Clean PDF.** `:w` uses the browser's print dialog with a print stylesheet
   that keeps the dark theme and hides cursor, comments and chrome.
 - **Local only.** Loopback server with a per-session token, Host/Origin checks
-  and a CSP that blocks inline script, including script inside SVG.
+  and a CSP that blocks inline script, including script inside SVG. Agent
+  widgets run in `sandbox="allow-scripts"` frames with no network access.
 
 Theme and interaction conventions follow [ztnel/mmdr](https://github.com/ztnel/mmdr).
 

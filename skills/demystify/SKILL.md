@@ -82,6 +82,15 @@ not a chat transcript.
 - Animate and add interactivity with SMIL (`<animate>`, `<set begin="id.click">`).
   Use ids without `-`, which SMIL parses as a time offset. The PDF captures one frame.
   Page CSS colours `<text>`; override with `style="fill:…"`, not `fill=`.
+- **Widgets** are fenced ```` ```widget Caption ```` blocks of HTML, CSS and
+  inline `<script>` for sliders, buttons and live plots. Each runs in a sandboxed
+  frame: no network, no external scripts, no access to the page. Height fits the
+  content. Helpers: `dm.plot(el, {x: [lo, hi], y?, series: [{f, color?, label?}],
+  xlabel?, ylabel?, marks?})` draws an SVG plot; `dm.state({k: v})` adds values.
+  Give inputs a `name` or `id`: their current values reach you with the comment.
+  A widget is one cursor stop; the human presses `Enter` to interact and `Esc`
+  to return. The PDF captures its current state. Widget lines must not start with
+  a code fence.
 - The page is dark. Use the built-in classes instead of hard-coded colours:
   `box` (with optional `accent`, `ok`, `warn`, `alt`), `edge` (optional `accent`),
   `label`, `muted`, `arrow` (for marker paths). Plain `<text>` is already light.

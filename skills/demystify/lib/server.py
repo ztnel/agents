@@ -22,15 +22,23 @@ from urllib.parse import parse_qs, urlsplit
 import document
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
-STATIC = {"/app.js": "text/javascript", "/style.css": "text/css", "/favicon.svg": "image/svg+xml"}
+STATIC = {"/app.js": "text/javascript", "/style.css": "text/css", "/favicon.svg": "image/svg+xml",
+          "/widget.js": "text/javascript", "/widget.css": "text/css"}
 MAX_BODY = 256 * 1024
 MAX_MESSAGE = 8000
 MAX_EXCERPT = 2000
+MAX_STATE = 2000
 WAIT_MAX = 300
 STATE_WAIT = 25
 WORKING_WINDOW = 600
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-       "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+       "connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+# Widgets run agent-authored scripts in an opaque-origin sandbox: no network, no access to the page,
+# its token or the API. Origins are explicit because 'self' is ambiguous inside a sandbox.
+WIDGET_CSP = ("default-src 'none'; script-src {o} 'unsafe-inline'; style-src {o} 'unsafe-inline'; "
+              "img-src data: blob:; frame-ancestors {o}; base-uri 'none'; form-action 'none'; sandbox allow-scripts")
+WIDGET_PAGE = ('<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/widget.css">'
+               '<script src="/widget.js"></script></head><body>\n{body}\n</body></html>')
 
 
 class RequestError(Exception):
@@ -126,6 +134,11 @@ class Session:
             if element not in units[0].labels:
                 raise RequestError(f"diagram element {element!r} not found on line {start}")
             anchor["element"] = element
+        state = body.get("state")
+        if state is not None:
+            if units[0].kind != "widget" or not isinstance(state, dict) or len(json.dumps(state)) > MAX_STATE:
+                raise RequestError(f"state must be a widget's control values of at most {MAX_STATE} characters")
+            anchor["state"] = state
         if excerpt:
             if not isinstance(excerpt, str) or len(excerpt) > MAX_EXCERPT:
                 raise RequestError(f"excerpt must be a string of at most {MAX_EXCERPT} characters")
@@ -186,6 +199,9 @@ class Session:
             text += "".join(f"\n(LaTeX source, line {u.line}: {u.tex})" for u in units if u.tex)
         if anchor.get("element"):
             text += f"\n(diagram element: {anchor['element']})"
+        if anchor.get("state"):
+            values = ", ".join(f"{k}={v if isinstance(v, str) else json.dumps(v)}" for k, v in anchor["state"].items())
+            text += f"\n(widget state when commented: {values})"
         if anchor.get("excerpt"):
             text += f"\n(selected text: \"{anchor['excerpt']}\")"
         return text
@@ -284,11 +300,11 @@ class Handler(BaseHTTPRequestHandler):
         if len(args) > 1 and str(args[1])[:1] in "45":
             super().log_message(fmt, *args)
 
-    def _send(self, code: int, data: bytes, kind: str = "application/json") -> None:
+    def _send(self, code: int, data: bytes, kind: str = "application/json", csp: str = CSP) -> None:
         self.send_response(code)
         for key, value in (("Content-Type", kind), ("Content-Length", str(len(data))),
                            ("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"),
-                           ("Referrer-Policy", "no-referrer"), ("Content-Security-Policy", CSP)):
+                           ("Referrer-Policy", "no-referrer"), ("Content-Security-Policy", csp)):
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(data)
@@ -327,6 +343,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, (ASSETS / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif route in STATIC:
                 self._send(200, (ASSETS / route[1:]).read_bytes(), f"{STATIC[route]}; charset=utf-8")
+            elif route.startswith("/widget/") and route[8:] in session.rendered.widgets:
+                page = WIDGET_PAGE.format(body=session.rendered.widgets[route[8:]])
+                self._send(200, page.encode(), "text/html; charset=utf-8", WIDGET_CSP.format(o=self.server.origin))
             elif route == "/health":
                 self._json(200, {"ok": True, "doc": str(session.doc)})
             elif route == "/api/state":

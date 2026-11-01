@@ -29,12 +29,14 @@ closed flag) and `server.log`.
 condition variable. A watcher re-renders on mtime change and relocates anchors.
 HTTP routes: `/api/state` (browser long-poll), `/api/comment`, `/api/close`,
 and `/agent/{wait,read,post,close}`. All `/api` and `/agent` routes require the
-`X-Token` header.
+`X-Token` header. `/widget/<hash>` serves a widget's HTML without the token,
+under a CSP with `sandbox allow-scripts` and no network sources; comments on a
+widget may carry its reported `state` (≤2000 chars of JSON).
 
 ## `document.py`
 
 `render(markdown)` returns the title, HTML and ordered units (source line, kind,
-plain text, diagram labels). `relocate(anchor, units)` moves an anchor to the
+plain text, diagram labels) and widget bodies keyed by content hash. `relocate(anchor, units)` moves an anchor to the
 unique exact match of its quoted units or marks it outdated.
 
 ## `latex.py`

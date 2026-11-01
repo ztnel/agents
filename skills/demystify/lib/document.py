@@ -8,13 +8,15 @@ agent edits, and a quote of the unit text lets the anchor follow later revisions
 
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 from dataclasses import dataclass, field
 
 from latex import to_mathml
 
-FENCE = re.compile(r"^(```+|~~~+)\s*([\w+-]*)\s*$")
+WIDGET_LANGS = ("widget", "interactive", "html")
+FENCE = re.compile(r"^(```+|~~~+)\s*([\w+-]*)(?:\s+(.*?))?\s*$")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 RULE = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")
 ITEM = re.compile(r"^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$")
@@ -53,6 +55,7 @@ class Rendered:
     title: str
     html: str
     units: list[Unit]
+    widgets: dict[str, str] = field(default_factory=dict)  # key -> agent-authored HTML, served sandboxed
 
 
 def inline(text: str) -> str:
@@ -99,6 +102,7 @@ class _Builder:
         self.lines = lines
         self.out: list[str] = []
         self.units: list[Unit] = []
+        self.widgets: dict[str, str] = {}
 
     def unit(self, line: int, kind: str, body: str, tag: str = "span", attrs: str = "",
              labels: list[str] | None = None, text: str | None = None, content: str = "",
@@ -125,7 +129,7 @@ def render(source: str) -> Rendered:
             continue
         fence = FENCE.match(stripped)
         if fence:
-            marker, lang = fence.group(1), fence.group(2).lower()
+            marker, lang, info = fence.group(1), fence.group(2).lower(), (fence.group(3) or "").strip()
             body: list[str] = []
             i += 1
             while i < len(lines) and not lines[i].strip().startswith(marker[0] * len(marker)):
@@ -135,6 +139,15 @@ def render(source: str) -> Rendered:
             if lang in ("math", "latex", "tex"):
                 tex = "\n".join(body).strip()
                 b.out.append(b.unit(number, "math", to_mathml(tex, display=True), "div", tex=tex))
+            elif lang in WIDGET_LANGS:
+                source = "\n".join(body)
+                key = hashlib.sha256(source.encode()).hexdigest()[:16]
+                b.widgets[key] = source
+                name = html.escape(info or "interactive")
+                frame = (f'<iframe src="/widget/{key}" sandbox="allow-scripts" title="{name}" '
+                         f'referrerpolicy="no-referrer"></iframe>')
+                caption = f"<figcaption>{name}</figcaption>" if info else ""
+                b.out.append(b.unit(number, "widget", frame + caption, "figure", text=f"[widget] {info or 'interactive'}"))
             elif lang == "svg":
                 svg = sanitize_svg("\n".join(body))
                 labels = [html.unescape(m.group(2) if m.group(2) is not None else m.group(3))
@@ -185,7 +198,7 @@ def render(source: str) -> Rendered:
             para.append(b.unit(i + 1, "text", inline(text)))
             i += 1
         b.out.append(f"<p>{' '.join(para)}</p>")
-    return Rendered(title, "\n".join(b.out), b.units)
+    return Rendered(title, "\n".join(b.out), b.units, b.widgets)
 
 
 def _block_start(lines: list[str], i: int) -> bool:

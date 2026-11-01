@@ -99,6 +99,23 @@ class ServerTest(unittest.TestCase):
         context = self.call("/agent/read")["pending"][0]["context"]
         self.assertIn("(LaTeX source, line 3: \\frac{a}{b})", context)
 
+    def test_widget_is_served_sandboxed_and_reports_state(self):
+        self.doc.write_text("# T\n\n```widget Duty\n<input id=\"D\"><script>go()</script>\n```\n")
+        self.srv.session.mtime = None
+        self.srv.session.reload()
+        key = next(iter(self.srv.session.rendered.widgets))
+        with urllib.request.urlopen(f"{self.srv.origin}/widget/{key}", timeout=10) as response:
+            csp = response.headers["Content-Security-Policy"]
+            self.assertIn("<script>go()</script>", response.read().decode())
+        self.assertIn("sandbox allow-scripts", csp)
+        self.assertNotIn("connect-src", csp)  # default-src 'none': no network from widget code
+        with self.assertRaises(urllib.error.HTTPError):
+            urllib.request.urlopen(f"{self.srv.origin}/widget/0000", timeout=10)
+        self.call("/api/comment", {"start": 3, "end": 3, "state": {"D": "0.4", "on": True}, "content": "?"})
+        self.assertIn("(widget state when commented: D=0.4, on=true)", self.call("/agent/read")["pending"][0]["context"])
+        with self.assertRaises(urllib.error.HTTPError):
+            self.call("/api/comment", {"start": 1, "end": 1, "state": {"D": 1}, "content": "?"})
+
 
 if __name__ == "__main__":
     unittest.main()

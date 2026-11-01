@@ -1,0 +1,26 @@
+/* Theme for sandboxed widgets: matches the explainer page. */
+:root {
+  color-scheme: dark; font: 14px/1.5 system-ui, sans-serif; color: #e6edf3; background: transparent;
+  --bg: #0d1117; --panel: #161b22; --raised: #21262d; --border: #30363d; --muted: #8b949e; --fg: #e6edf3;
+  --cyan: #39c5cf; --orange: #f0883e; --green: #3fb950; --amber: #e3b341; --red: #f85149; --purple: #a371f7; --blue: #58a6ff;
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { padding: 4px 2px; }
+svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+svg text { fill: var(--fg); font: 12px system-ui, sans-serif; }
+.muted, svg text.muted { color: var(--muted); fill: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; justify-content: center; margin: 6px 0 10px; }
+label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+output, .value { font: 12px var(--mono); color: var(--cyan); min-width: 5ch; }
+button { font: inherit; font-size: 13px; color: var(--fg); background: var(--raised); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+button:hover { background: var(--border); }
+button.on, button[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); background: #39c5cf1a; }
+input[type="range"] { accent-color: var(--cyan); width: 180px; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--cyan); }
+select, input[type="number"], input[type="text"] { font: inherit; font-size: 13px; color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.dm-plot .grid { stroke: var(--border); stroke-width: 1; }
+.dm-plot .axis { stroke: var(--muted); stroke-width: 1; }
+.dm-plot .tick { fill: var(--muted); font-size: 11px; }

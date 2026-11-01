@@ -56,6 +56,8 @@ main { display: flex; flex: 1; min-height: 0; position: relative; --panel-w: min
 #doc hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 #doc figure { margin: 1em 0; padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; text-align: center; display: block; }
 #doc figure svg { max-width: 100%; height: auto; color: var(--fg); }
+#doc figure.u-widget iframe { display: block; width: 100%; height: 200px; border: 0; background: transparent; color-scheme: dark; }
+#doc figure figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
 #doc li { margin: .2em 0; }
 
 /* Units, cursor, selection, threads */
@@ -90,6 +92,8 @@ figure.u.has-thread.pending { outline-color: var(--amber); }
 .u[data-count]::after { content: attr(data-count); display: inline-block; margin-left: 4px; padding: 0 5px; vertical-align: super; font: 600 10px/1.5 var(--mono); color: var(--green); background: #0f2d19; border: 1px solid #238636; border-radius: 10px; }
 .u.pending[data-count]::after { color: var(--amber); background: #341f00; border-color: #9e6a03; }
 figure.u[data-count]::after { position: absolute; right: 8px; top: 8px; margin: 0; }
+.u-math[data-count] { position: relative; }
+.u-math[data-count]::after { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); margin: 0; vertical-align: baseline; }
 tr.u[data-count]::after { display: none; }
 #doc svg [data-label] { cursor: pointer; transition: filter 200ms ease-in-out; }
 #doc svg [data-label].element { filter: drop-shadow(0 0 4px var(--cyan)) drop-shadow(0 0 8px #39c5cf99); }

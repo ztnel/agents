@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - Unreleased
+
+### Added
+- `demystify` interactive widgets: ```` ```widget ```` blocks run agent HTML and JavaScript in a sandboxed frame with `dm.plot` and `dm.state` helpers; comments include the widget's current values. `:e` reloads the page in place.
+
+### Changed
+- Display math is a single cursor stop like a diagram; commented equations show a side bar, and the cursor blinks.
+
 ## [0.3.0] - Unreleased
 
 ### Added
