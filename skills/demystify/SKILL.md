@@ -70,8 +70,8 @@ not a chat transcript.
   quotes, tables, fenced code, `**bold**`, `*em*`, `` `code` ``, http(s) links.
   No raw HTML or images.
 - **Math** is LaTeX: `$…$` inline, `$$…$$` display (one or more lines) or a
-  ```` ```math ```` block. It renders as native MathML, so the human can select and
-  search it. Common commands work: scripts, `\frac`, `\sqrt`, Greek letters,
+  ```` ```math ```` block. It renders as native MathML. The human can select and
+  search inline math; a display equation is one stop, commented as a whole. Common commands work: scripts, `\frac`, `\sqrt`, Greek letters,
   operators, functions, accents, `\mathbf`/`\mathbb`, `\left…\right`, `\text`, and
   `matrix`/`pmatrix`/`cases`/`aligned`. Unknown commands render in red. Write `\$`
   for a literal dollar.
@@ -92,7 +92,7 @@ not a chat transcript.
 
 `j/k` (with counts), `gg/G`, `Ctrl-d/u/f/b`, `[[`/`]]` headings, `h/l w/b/e 0/^/$`, `v`/`V` visual,
 `c` comment, `C` whole-document comment, `r` reply, `m/M` next/previous thread,
-`Tab` switch to the thread panel, `/` search, `:w` save PDF, `:q` end session,
+`Tab` switch to the thread panel, `/` search, `:w` save PDF, `:q` end session, `:e` reload,
 `?` help; clicking highlighted text opens its thread. Full reference: [README.md](README.md).
 
 ## Gotchas

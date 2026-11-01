@@ -78,6 +78,7 @@ function showError(text) {
 const lineOf = (i) => Number(units[i]?.dataset.line || 0);
 const closed = () => state?.closed || !reachable;
 const isDiagram = (i) => units[i]?.classList.contains("u-diagram");
+const isBlockMath = (i) => units[i]?.classList.contains("u-math");
 const lengthOf = (i) => unitIndex(i).text.length;
 const clampCol = (i, c) => Math.max(0, Math.min(c, lengthOf(i) - 1));
 const charAt = (i, c) => unitIndex(i).text[c] || "";
@@ -99,7 +100,7 @@ function unitIndex(i) {
   const unit = units[i];
   const nodes = [];
   let text = "";
-  if (unit) {
+  if (unit && !isBlockMath(i)) { // display math is one stop, like an image: no characters
     const diagram = isDiagram(i);
     const walker = document.createTreeWalker(unit, NodeFilter.SHOW_TEXT, diagram
       ? { acceptNode: (n) => (n.parentElement?.closest("text") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) }
@@ -252,8 +253,16 @@ document.fonts?.ready.then(redrawMarks);
 doc.addEventListener("transitionend", redrawMarks);
 
 // -- state ----------------------------------------------------------------
+// :e reloads the page (fresh assets and document) and lands back on the same spot.
+function reloadPage() {
+  sessionStorage.setItem("demystify-view", JSON.stringify({ line: lineOf(cursor), col, top: doc.scrollTop }));
+  location.reload();
+}
+
 function apply(next) {
-  const keep = { line: lineOf(cursor), col };
+  const restore = !html && JSON.parse(sessionStorage.getItem("demystify-view") || "null");
+  sessionStorage.removeItem("demystify-view");
+  const keep = restore || { line: lineOf(cursor), col };
   const keepStart = vstart && { line: lineOf(vstart.i), col: vstart.col };
   state = next;
   if (next.html !== html) {
@@ -279,6 +288,7 @@ function apply(next) {
   decorate();
   renderThreads();
   renderCursor(false);
+  if (restore) doc.scrollTop = restore.top;
 }
 
 function renderAgent() {
@@ -578,13 +588,9 @@ function newRow(box) {
 }
 
 // Screen rows of the block holding unit i, each a list of character boxes.
-// Text wraps in reading order; display math is one row; a diagram is a single stop.
+// Text wraps in reading order; diagrams and display math are single stops.
 function rowsOf(i) {
-  if (isDiagram(i)) return [];
-  if (units[i].classList.contains("u-math")) {
-    const boxes = charBoxes(i);
-    return boxes.length ? [boxes] : [];
-  }
+  if (isDiagram(i) || isBlockMath(i)) return [];
   const rows = [];
   const [a, b] = blockOf(i);
   for (let u = a; u <= b; u++) {
@@ -810,6 +816,7 @@ function command(text) {
   const cmd = text.trim();
   if (/^\d+$/.test(cmd)) { endVisual(); moveTo(indexForLine(Number(cmd)), 0); return; }
   if (cmd === "w") exportPdf();
+  else if (cmd === "e" || cmd === "e!" || cmd === "edit") reloadPage();
   else if (cmd === "q" || cmd === "q!") closeSession();
   else if (cmd === "wq" || cmd === "x") exportPdf().then(closeSession);
   else if (cmd === "noh" || cmd === "nohlsearch") { runSearch(""); say(""); }

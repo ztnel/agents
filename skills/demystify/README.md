@@ -22,16 +22,16 @@ Modes are explicit and always shown in the status line: `NORMAL`,
 | `gg` `G` · `42G` | Top, bottom, source line 42 |
 | `Ctrl-d` `Ctrl-u` · `Ctrl-f` `Ctrl-b` · `zz` | Half page, full page, centre cursor |
 | `[[` `]]` | Previous or next heading |
-| `h` `l` · `w` `b` `e` · `0` `^` `$` | Move by character, word, line edge; inside diagram text and math too (`h` `l` cycle parts of a text-free diagram) |
+| `h` `l` · `w` `b` `e` · `0` `^` `$` | Move by character, word, line edge; inside diagram text and inline math too; display math is one stop (`h` `l` cycle parts of a text-free diagram) |
 | `v` · `V` · `o` | Visual character or line selection; swap its end |
-| `c` · `C` | Comment on line, selection (diagram text and math included) or diagram part; on the whole document |
+| `c` · `C` | Comment on line, selection (diagram text and inline math included) or diagram part; on the whole document |
 | Click · `Shift`+click | Move the cursor and open the thread under it; extend a character selection |
 | `r` · `Enter` | Reply to the thread on this line; show it in the panel |
 | `m` `M` | Next or previous thread |
 | `Tab` · `Esc` | Open the floating thread panel and switch focus to it (`j`/`k`, `r`, `Enter` there); close it and return to the document |
 | `/` · `n` `N` · `:noh` | Search (smartcase); cycle matches; clear |
 | `Enter` · `Shift+Enter` · `Esc` | In INSERT: send, newline, close the conversation keeping the draft |
-| `:w` · `:q` · `:wq` · `:N` | Save PDF, end session, both, go to line N |
+| `:w` · `:q` · `:wq` · `:e` · `:N` | Save PDF, end session, both, reload the page, go to line N |
 | `Esc` · `?` | Clear count, selection or part; help |
 
 Commented text stays highlighted (amber awaiting the agent, green answered) and

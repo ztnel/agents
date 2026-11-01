@@ -294,6 +294,10 @@ class _Parser:
             return f"<mroot>{body}{_row(index)}</mroot>" if index else f"<msqrt>{body}</msqrt>"
         if name in TEXTS:
             text = self.raw_group()
+            # MathML collapses edge whitespace in <mtext>; keep \text{ V} spaced like LaTeX does.
+            core = text.strip()
+            if core:
+                text = "\u00a0" * (text[0].isspace()) + core + "\u00a0" * (text[-1].isspace())
             style = {"textit": ' style="font-style:italic"', "textbf": ' style="font-weight:bold"'}.get(name, "")
             return f"<mtext{style}>{_esc(text)}</mtext>"
         if name == "operatorname" or name == "operatorname*":

@@ -71,6 +71,9 @@ class RenderTest(unittest.TestCase):
         self.assertIn("<merror><mtext>\\nosuch</mtext></merror>", html)
         self.assertIn("<mfrac><mn>1</mn><mrow></mrow></mfrac>", html)
 
+    def test_text_keeps_edge_spaces(self):
+        self.assertIn("<mtext>\u00a0V</mtext>", document.render("$480\\text{ V}$").html)
+
 
 class RelocateTest(unittest.TestCase):
     def anchor(self, source, start, end):

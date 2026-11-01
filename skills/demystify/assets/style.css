@@ -62,11 +62,13 @@ main { display: flex; flex: 1; min-height: 0; position: relative; --panel-w: min
 .u { border-radius: 3px; scroll-margin: 25vh 0; position: relative; }
 /* The cursor is one character block; only units without characters fall back to a line marker. */
 .u.cursor.no-char { background: #39c5cf22; box-shadow: -3px 0 0 var(--cyan); }
-figure.u.cursor.no-char { background: none; box-shadow: none; outline: 2px solid var(--cyan); outline-offset: 2px; }
+figure.u.cursor.no-char, .u-math.cursor.no-char { background: none; box-shadow: none; outline: 2px solid var(--cyan); outline-offset: 2px; }
 .u.visual { background: #f0883e33; }
 .u.visual.cursor.no-char { box-shadow: -3px 0 0 var(--orange); }
 .u.has-thread { text-decoration: underline 2px var(--green); text-underline-offset: 4px; }
 .u.has-thread.pending { text-decoration-color: var(--amber); }
+.u-math.has-thread { text-decoration: none; box-shadow: -3px 0 0 var(--green); background: #3fb95014; }
+.u-math.has-thread.pending { box-shadow: -3px 0 0 var(--amber); background: #e3b34114; }
 figure.u.has-thread { outline: 1px solid var(--green); }
 figure.u.has-thread.pending { outline-color: var(--amber); }
 .u.focus-thread { background: #a371f722; }
