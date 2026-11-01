@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>demystify</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header>
+    <h1 id="title">demystify</h1>
+    <span id="source"></span>
+    <span id="agent"><span id="agent-dot" class="dot offline" role="img" aria-label="Agent status"></span><span id="agent-text">no agent connected</span></span>
+  </header>
+  <div id="error" role="alert" hidden></div>
+  <main>
+    <article id="doc" aria-label="Explainer (read-only)"></article>
+    <aside id="panel" aria-label="Conversations" hidden>
+      <div class="panel-heading"><h2>Conversations</h2><span id="pending-count"></span><button id="panel-close" type="button" aria-label="Close conversations">×</button></div>
+      <div id="threads"></div>
+      <p id="empty" class="hint">No comments yet. Move with <kbd>j</kbd>/<kbd>k</kbd>, select with <kbd>v</kbd>/<kbd>V</kbd>, comment with <kbd>c</kbd>.</p>
+    </aside>
+  </main>
+  <div id="busy" role="status" aria-live="polite" hidden><div class="busy-card"><span class="spinner"></span><div><div class="busy-title">Preparing PDF</div><div class="busy-sub">The print dialog opens when ready · <kbd>Esc</kbd> to dismiss</div></div></div></div>
+  <form id="composer" hidden>
+    <div id="composer-target" class="byline"></div>
+    <textarea id="composer-input" maxlength="8000" placeholder="Ask, challenge or clarify…" aria-label="Comment"></textarea>
+    <div class="hint">Enter send · Shift+Enter newline · Esc close (draft kept)</div>
+  </form>
+  <footer id="statusline">
+    <span id="mode">NORMAL</span>
+    <span id="pane">DOC</span>
+    <span id="command-bar" hidden><span id="command-prefix">:</span><input id="command" autocomplete="off" spellcheck="false" aria-label="Command"></span>
+    <span id="message" role="status"></span>
+    <span class="spacer"></span>
+    <span id="keys"></span>
+    <button id="threads-button" type="button" title="Conversations (Tab)">0 threads</button>
+    <span id="position"></span>
+    <button id="help-button" type="button">? help</button>
+  </footer>
+  <dialog id="help" aria-labelledby="help-title">
+    <div class="panel-heading"><h2 id="help-title">Keys</h2><button id="help-close" type="button" aria-label="Close help">×</button></div>
+    <dl>
+      <dt>j k · 5j · gg G · 42G</dt><dd>Move to the character above or below on screen, keeping the column; a diagram is one stop (<kbd>h</kbd>/<kbd>l</kbd> step into its text). Counts repeat. <kbd>NG</kbd> jumps to source line N.</dd>
+      <dt>Ctrl-d Ctrl-u · Ctrl-f Ctrl-b · zz</dt><dd>Half page / full page down and up; centre the cursor.</dd>
+      <dt>[[ ]]</dt><dd>Previous / next heading.</dd>
+      <dt>h l · w b e · 0 ^ $</dt><dd>Move by character, word and to the line start, first character or end. Works inside diagram text and math; on a diagram without text <kbd>h</kbd>/<kbd>l</kbd> cycle its labelled elements.</dd>
+      <dt>v · V · o</dt><dd>Enter VISUAL (characters) or VISUAL LINE and extend with motions; <kbd>o</kbd> swaps the selection end.</dd>
+      <dt>c · C</dt><dd>Comment on the cursor line, selection or diagram element · on the whole document.</dd>
+      <dt>r · Enter</dt><dd>Reply to the conversation on the cursor line · show it in the panel.</dd>
+      <dt>m M</dt><dd>Next / previous conversation.</dd>
+      <dt>Tab</dt><dd>Open the floating conversation panel, then switch focus between it and the document; <kbd>Esc</kbd> closes the panel and returns to the document. In the panel: <kbd>j</kbd>/<kbd>k</kbd> move, <kbd>r</kbd> reply, <kbd>Enter</kbd> jump to its text. (<kbd>Ctrl-w</kbd> is not bound: browsers close the tab.)</dd>
+      <dt>/ · n N · :noh</dt><dd>Search (smartcase) any text, diagram labels and math included, landing on the exact character; next/previous match; clear highlights.</dd>
+      <dt>Enter · Shift+Enter · Esc</dt><dd>In INSERT: send; newline; close the conversation keeping the draft.</dd>
+      <dt>:w · :q · :wq · :N</dt><dd>Save as PDF via the print dialog · end the session · both · go to source line N.</dd>
+      <dt>Click · Shift+click</dt><dd>Move the cursor and open the conversation on highlighted text · extend a character selection.</dd>
+      <dt>Esc · ?</dt><dd>Clear count, selection or element · this help.</dd>
+    </dl>
+  </dialog>
+</body>
+</html>

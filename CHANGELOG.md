@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - Unreleased
+
+### Added
+- `demystify` skill: agents explain concepts on a live, read-only page of Markdown and inline SVG diagrams, the human comments with Vim keys, agents wait and reply with their model id, and the page saves as a PDF. Comments anchor to lines, diagram parts or character selections (`v`); commented text stays highlighted and opens its thread on click. The Vim cursor and `/` search reach every character, including diagram text. LaTeX math (`$…$`, `$$…$$`, ```` ```math ````) renders as native MathML without dependencies.
+
 ## [0.2.5] - Unreleased
 
 ### Fixed
