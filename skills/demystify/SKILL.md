@@ -37,7 +37,8 @@ Run this loop until the session is closed.
    ```bash
    lib/demystify.py reply <doc.md> --model <model-id> --thread <id> --body "…"
    ```
-   Use `--body-file` for long or quoted text. Reply before editing so the
+   Use `--body-file` for long or quoted text. Replies render `**bold**`, `*em*`,
+   `` `code` ``, lists, fenced code and `$…$`/`$$…$$` math. Reply before editing so the
    human sees the answer, then say in the reply what you changed.
 5. Go to 3.
 
@@ -77,7 +78,7 @@ not a chat transcript.
   for a literal dollar.
 - **Diagrams** are fenced ```` ```svg ```` blocks with inline SVG. Set `viewBox`.
   Put `data-label="name"` on each `<g>` the human may want to discuss. The human
-  can select and search the diagram's `<text>`; selecting a part's text anchors to that part. A diagram's line for `ask --line` is its opening fence.
+  cycles parts with `h`/`l` and can search the diagram's `<text>`; selecting a part's text anchors to that part. A diagram's line for `ask --line` is its opening fence.
   Scripts and event handlers are stripped.
 - Animate and add interactivity with SMIL (`<animate>`, `<set begin="id.click">`).
   Use ids without `-`, which SMIL parses as a time offset. The PDF captures one frame.
@@ -99,7 +100,7 @@ not a chat transcript.
 
 ## Human keys
 
-`j/k` (with counts), `gg/G`, `Ctrl-d/u/f/b`, `[[`/`]]` headings, `h/l w/b/e 0/^/$`, `v`/`V` visual,
+`j/k` (with counts), `gg/G`, `Ctrl-d/u/f/b`, `{`/`}` sections, `gO` contents, `h/l w/b/e 0/^/$`, `v`/`V` visual,
 `c` comment, `C` whole-document comment, `r` reply, `m/M` next/previous thread,
 `Tab` switch to the thread panel, `/` search, `:w` save PDF, `:q` end session, `:e` reload,
 `?` help; clicking highlighted text opens its thread. Full reference: [README.md](README.md).

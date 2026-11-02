@@ -71,6 +71,14 @@ class RenderTest(unittest.TestCase):
         self.assertIn("<merror><mtext>\\nosuch</mtext></merror>", html)
         self.assertIn("<mfrac><mn>1</mn><mrow></mrow></mfrac>", html)
 
+    def test_message_renders_markdown_and_escapes(self):
+        html = document.message_html("**Bold** and *em* with `x<y`, $V^2$\n\n- one\n- two\n\n```\n<b>raw</b>\n```\n$$\n\\frac{1}{2}\n$$")
+        self.assertIn("<p><strong>Bold</strong> and <em>em</em> with <code>x&lt;y</code>, <math", html)
+        self.assertIn("<ul><li>one</li><li>two</li></ul>", html)
+        self.assertIn("<pre><code>&lt;b&gt;raw&lt;/b&gt;</code></pre>", html)
+        self.assertIn("<mfrac>", html)
+        self.assertNotIn("<b>", html)
+
     def test_widget_renders_as_sandboxed_frame(self):
         rendered = document.render("# Title\n\n```widget Duty explorer\n<script>x()</script>\n```")
         key, source = next(iter(rendered.widgets.items()))

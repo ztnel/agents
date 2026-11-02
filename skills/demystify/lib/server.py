@@ -246,7 +246,9 @@ class Session:
         return {
             "version": self.version, "doc": str(self.doc), "title": self.rendered.title or self.doc.stem,
             "html": self.rendered.html, "units": [u.as_dict() for u in self.rendered.units],
-            "threads": self.threads, "agent": self.agent_status(), "closed": self.closed, "error": self.error,
+            "threads": [{**t, "messages": [{**m, "html": document.message_html(m["content"])} for m in t["messages"]]}
+                        for t in self.threads],
+            "agent": self.agent_status(), "closed": self.closed, "error": self.error,
         }
 
     def read(self) -> dict:

@@ -23,11 +23,13 @@ let wantCol = 0;
 let wantX = null; // sticky screen x for j/k, like Vim's curswant
 let whole = false; // j/k landed on a diagram: the cursor covers the whole figure
 let visual = null;          // null | "line" | "char"
+let frozenRows = null;      // a row selection being commented: fixed while the layout reflows
 let vstart = null;          // {i, col} where the visual selection began
 let element = -1;
 let mode = "NORMAL";        // NORMAL | VISUAL | INSERT | COMMAND | SEARCH
 let pane = "doc";           // doc | threads
 let panelOpen = false;      // floating conversation panel
+let tocOpen = localStorage.getItem("demystify-toc") === "1"; // contents sidebar
 let count = "";
 let prefix = "";
 let activeThread = null;
@@ -281,6 +283,7 @@ function apply(next) {
     }
     element = -1;
     if (searchTerm) runSearch(searchTerm);
+    buildToc();
   }
   document.title = next.title || "demystify";
   $("title").textContent = next.title || "demystify";
@@ -387,7 +390,10 @@ function renderThreads() {
       const node = el("div", `msg ${message.role}`);
       const when = new Date(message.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       node.append(el("span", "byline", `${message.role === "agent" ? message.model : "you"} · ${when}`));
-      node.append(document.createTextNode(message.content));
+      const body = el("div", "msg-body");
+      body.innerHTML = message.html ?? ""; // rendered and escaped by the server
+      if (!message.html) body.textContent = message.content;
+      node.append(body);
       card.append(node);
     }
     card.onclick = (event) => {
@@ -414,6 +420,40 @@ function renderThreads() {
   }
 }
 
+// -- contents sidebar ---------------------------------------------------------
+function buildToc() {
+  const list = $("toc-list");
+  list.replaceChildren(...units.flatMap((unit, i) => {
+    if (!unit.classList.contains("u-heading")) return [];
+    const item = document.createElement("li");
+    item.className = unit.tagName.toLowerCase();
+    item.textContent = unit.textContent.trim();
+    item.dataset.unit = i;
+    item.addEventListener("click", () => { pane = "doc"; endVisual(); moveTo(i, 0); unit.scrollIntoView({ block: "start" }); });
+    return [item];
+  }));
+}
+
+function setToc(open) {
+  tocOpen = open;
+  localStorage.setItem("demystify-toc", open ? "1" : "0");
+  $("toc").hidden = !open;
+  document.body.classList.toggle("toc-open", open);
+  markToc();
+}
+
+// Highlight the section holding the cursor.
+function markToc() {
+  if (!tocOpen) return;
+  let current = null;
+  for (const item of $("toc-list").children) {
+    item.classList.remove("current");
+    if (Number(item.dataset.unit) <= cursor) current = item;
+  }
+  current?.classList.add("current");
+  current?.scrollIntoView({ block: "nearest" });
+}
+
 function setPanel(open) {
   panelOpen = open;
   $("panel").hidden = !open;
@@ -437,7 +477,7 @@ function jumpToThread(thread) {
   if (!placed(thread)) return;
   endVisual();
   const found = thread.anchor.excerpt ? findExcerpt(thread.anchor) : null;
-  if (found) moveTo(found.start.unit, found.start.col);
+  if (found) moveTo(found.start.unit, found.start.col, true, true);
   else setCursor(indexForLine(thread.anchor.start));
 }
 
@@ -446,35 +486,64 @@ function labelled(i = cursor) {
   return isDiagram(i) ? [...units[i].querySelectorAll("[data-label]")] : [];
 }
 
-function setCursor(i, scroll = true) {
+// A diagram is one stop with its parts cycled by h/l; only search and thread
+// jumps (chars) land on a character inside its text.
+function setCursor(i, scroll = true, chars = false) {
   if (!units.length) return;
   const next = Math.max(0, Math.min(units.length - 1, i));
   wantX = null;
-  whole = false;
   if (next !== cursor) element = -1;
   cursor = next;
-  col = clampCol(cursor, wantCol);
+  whole = isDiagram(cursor) && !chars;
+  col = whole ? 0 : clampCol(cursor, wantCol);
   if (charAt(cursor, col) === SEP) col--;
-  if (lengthOf(cursor)) element = labelled().indexOf(partAt(cursor, col));
+  if (!whole && lengthOf(cursor)) element = labelled().indexOf(partAt(cursor, col));
   renderCursor(scroll);
 }
 
-function moveTo(i, c, scroll = true) {
+function moveTo(i, c, scroll = true, chars = false) {
   wantCol = c;
   wantX = null;
-  whole = false;
-  setCursor(i, scroll);
+  setCursor(i, scroll, chars);
 }
 
 function endVisual() {
   visual = null;
+  frozenRows = null;
   vstart = null;
   if (mode === "VISUAL") mode = "NORMAL";
 }
 
+// VISUAL LINE spans whole screen rows; a unit without rows (diagram, display
+// math, widget) is selected whole.
 function selection() {
+  if (visual === "line" && frozenRows) return frozenRows;
   const [a, b] = before(vstart, pos()) ? [vstart, pos()] : [pos(), vstart];
-  return { a, b };
+  return visual === "line" ? { a: rowEdge(a, false), b: rowEdge(b, true) } : { a, b };
+}
+
+function rowEdge(p, end) {
+  const row = rowsOf(p.i).find((r) => r.some((box) => box.i === p.i && box.c === p.col));
+  if (!row) return { i: p.i, col: end ? Math.max(0, lengthOf(p.i) - 1) : 0 };
+  const box = end ? row.at(-1) : row[0];
+  return { i: box.i, col: box.c };
+}
+
+const hasRows = (i) => !isDiagram(i) && !isAtomic(i) && lengthOf(i) > 0;
+
+// Character ranges for a row selection, split around units selected whole.
+function rowRanges(a, b) {
+  const ranges = [];
+  let from = null;
+  for (let i = a.i; i <= b.i; i++) {
+    if (!hasRows(i)) { units[i].classList.add("visual"); continue; }
+    from ??= i === a.i ? a : { i, col: 0 };
+    if (i === b.i || !hasRows(i + 1)) {
+      ranges.push(charRange(from, i === b.i ? b : { i, col: lengthOf(i) - 1 }));
+      from = null;
+    }
+  }
+  return ranges.filter(Boolean);
 }
 
 function renderCursor(scroll = true) {
@@ -486,7 +555,7 @@ function renderCursor(scroll = true) {
     if (whole || !lengthOf(cursor)) unit.classList.add("no-char");
     if (visual) {
       const { a, b } = selection();
-      if (visual === "line") for (let i = a.i; i <= b.i; i++) units[i].classList.add("visual");
+      if (visual === "line") selected = rowRanges(a, b);
       if (visual === "char") selected = [charRange(a, b)];
     }
     labelled()[element]?.classList.add("element");
@@ -494,6 +563,7 @@ function renderCursor(scroll = true) {
   }
   paint("dm-visual", selected);
   paint("dm-cursor", unit && !whole && lengthOf(cursor) ? [charRange(pos(), pos())] : []);
+  markToc();
   renderStatus();
 }
 
@@ -542,11 +612,11 @@ function heading(direction, times) {
 
 // -- character motions ------------------------------------------------------
 function words(i) {
-  if (!lengthOf(i)) return [{ start: 0, end: 1 }];
+  if (isDiagram(i) || !lengthOf(i)) return [{ start: 0, end: 1 }];
   return [...unitIndex(i).text.matchAll(/\w+|[^\w\s]+/g)].map((m) => ({ start: m.index, end: m.index + m[0].length }));
 }
 
-// w, b and e cross line boundaries like vim; a diagram without text counts as one word.
+// w, b and e cross line boundaries like vim; a diagram counts as one word.
 function wordMotion(kind, times) {
   let i = cursor;
   let c = col;
@@ -564,7 +634,6 @@ function wordMotion(kind, times) {
   moveTo(i, c);
 }
 
-// Text-free diagrams have no characters, so h/l cycle their labelled parts instead.
 // Units laid out together: the sentences of one paragraph flow into shared screen rows.
 function blockOf(i) {
   const parent = units[i].parentElement;
@@ -639,20 +708,28 @@ function vertical(delta) {
 }
 
 function horizontal(delta) {
-  if (whole && lengthOf(cursor)) { moveTo(cursor, col, false); return; } // step into the diagram's text
-  if (isDiagram(cursor) && !lengthOf(cursor)) { cycleElement(Math.sign(delta)); return; }
+  if (isDiagram(cursor)) { cycleElement(Math.sign(delta)); return; }
   const step = Math.sign(delta);
+  const [first, last] = blockOf(cursor);
+  let i = cursor;
   let c = col;
   for (let n = Math.abs(delta); n > 0; n--) {
     let next = c + step;
-    while (charAt(cursor, next) === SEP) next += step;
-    if (next < 0 || next >= lengthOf(cursor)) break;
+    while (charAt(i, next) === SEP) next += step;
+    if (next < 0 || next >= lengthOf(i)) {
+      // Sentences of one paragraph flow together, so h/l continue into the neighbour.
+      const j = i + step;
+      if (j < first || j > last || !lengthOf(j)) break;
+      i = j;
+      next = step > 0 ? 0 : lengthOf(j) - 1;
+    }
     c = next;
   }
-  moveTo(cursor, c, false);
+  moveTo(i, c, false);
 }
 
 function lineEdge(kind) {
+  if (isDiagram(cursor)) return;
   const text = unitIndex(cursor).text;
   if (kind === "$") { moveTo(cursor, Infinity, false); return; }
   moveTo(cursor, kind === "^" ? Math.max(0, text.search(/\S/)) : 0, false);
@@ -666,8 +743,11 @@ function startComment(whole = false) {
   } else {
     if (!units.length) return;
     const { a, b } = visual ? selection() : { a: pos(), b: pos() };
+    if (visual === "line") frozenRows = { a, b };
     const body = { start: lineOf(a.i), end: lineOf(b.i) };
-    if (visual === "char") {
+    const partial = visual === "line" && hasRows(a.i) && hasRows(b.i)
+      && (a.col > 0 || b.col < lengthOf(b.i) - 1);
+    if (visual === "char" || partial) {
       body.excerpt = selectedText(a, b);
       body.col = a.col;
       if (!body.excerpt) { say("selection has no text", true); return; }
@@ -758,7 +838,7 @@ function jumpMatch(direction) {
   const after = (m) => m.i > here.i || (m.i === here.i && m.col > here.col);
   const next = direction > 0 ? matches.find(after) ?? matches[0]
     : [...matches].reverse().find((m) => m.i < here.i || (m.i === here.i && m.col < here.col)) ?? matches.at(-1);
-  moveTo(next.i, next.col);
+  moveTo(next.i, next.col, true, true);
   say(`/${searchTerm} [${matches.indexOf(next) + 1}/${matches.length}]`);
 }
 
@@ -824,6 +904,7 @@ function command(text) {
   else if (cmd === "e" || cmd === "e!" || cmd === "edit") reloadPage();
   else if (cmd === "q" || cmd === "q!") closeSession();
   else if (cmd === "wq" || cmd === "x") exportPdf().then(closeSession);
+  else if (cmd === "toc") setToc(!tocOpen);
   else if (cmd === "noh" || cmd === "nohlsearch") { runSearch(""); say(""); }
   else if (cmd === "h" || cmd === "help") $("help").showModal();
   else if (cmd) say(`E492: Not an editor command: ${cmd}`, true);
@@ -861,6 +942,7 @@ function cycleThread(direction, times = 1) {
 
 // Vim semantics: V/v toggle their own kind, switch between kinds, and keep the start.
 function toggleVisual(kind) {
+  if (kind === "char" && whole) kind = "line"; // a whole diagram has no characters to select
   if (visual === kind) { endVisual(); } else {
     vstart = vstart || pos();
     visual = kind;
@@ -893,6 +975,7 @@ const DOC_KEYS = {
   r: () => startReply(threadsAt(lineOf(cursor)).find((t) => t.id === activeThread) || threadsAt(lineOf(cursor))[0]),
   Enter: () => { if (isWidget(cursor)) { enterWidget(); return; } const here = threadsAt(lineOf(cursor)); if (here.length) activate(here[0].id); else say("no conversation on this line"); },
   m: (n) => cycleThread(1, n), M: (n) => cycleThread(-1, n),
+  "{": (n) => heading(-1, n), "}": (n) => heading(1, n),
   n: () => jumpMatch(1), N: () => jumpMatch(-1),
 };
 
@@ -908,7 +991,9 @@ const THREAD_KEYS = {
 
 function cycleElement(direction) {
   const parts = labelled();
-  if (!parts.length) { say("this diagram has no labelled parts"); return; }
+  whole = true;
+  col = 0;
+  if (!parts.length) { renderCursor(false); say("this diagram has no labelled parts"); return; }
   element = element < 0 ? (direction > 0 ? 0 : parts.length - 1) : (element + direction + parts.length) % parts.length;
   renderCursor(false);
 }
@@ -920,6 +1005,7 @@ function prefixed(key) {
   if (seq === "gg") { moveTo(0, 0); return; }
   if (seq === "[[") { heading(-1, n); return; }
   if (seq === "]]") { heading(1, n); return; }
+  if (seq === "gO") { setToc(!tocOpen); return; }
   if (seq === "zz" || seq === "zt" || seq === "zb") {
     units[cursor]?.scrollIntoView({ block: { zz: "center", zt: "start", zb: "end" }[seq] });
     return;
@@ -1049,6 +1135,8 @@ function collapsePanel() {
 
 $("threads-button").onclick = () => { if (panelOpen) collapsePanel(); else togglePane(); };
 $("panel-close").onclick = collapsePanel;
+$("toc-close").onclick = () => setToc(false);
+setToc(tocOpen);
 $("help-close").onclick = () => $("help").close();
 
 
@@ -1092,7 +1180,7 @@ doc.addEventListener("click", (event) => {
   // A click on a diagram part's shape lands on that part's first character.
   if (at === null && part) at = unitIndex(index).nodes.find((n) => part.contains(n.node))?.start ?? null;
   moveTo(index, at ?? 0, false);
-  if (part && partAt(index, col) !== part) { element = labelled().indexOf(part); renderCursor(false); }
+  if (part && labelled(index).indexOf(part) !== element) { element = labelled(index).indexOf(part); renderCursor(false); }
   if (event.shiftKey || visual) return;
   // Repeated clicks on overlapping threads cycle through them.
   const ids = threadsAtPoint(unit, point);

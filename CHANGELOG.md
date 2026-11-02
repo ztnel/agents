@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - Unreleased
+
+### Added
+- `demystify` contents sidebar (`gO`, `:toc`) highlighting the current section; `{`/`}` jump between sections.
+- Comments render bold, italic, code, lists, fenced code and LaTeX math.
+
+### Changed
+- On a diagram, `h`/`l` cycle its labelled parts instead of entering its text.
+- `V` selects whole screen rows; `h`/`l` continue across a paragraph's sentences.
+
 ## [0.3.1] - Unreleased
 
 ### Added

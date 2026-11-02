@@ -21,10 +21,10 @@ Modes are explicit and always shown in the status line: `NORMAL`,
 | `j` `k` · `5j` | Move to the character above or below on screen; a diagram is one stop; counts repeat |
 | `gg` `G` · `42G` | Top, bottom, source line 42 |
 | `Ctrl-d` `Ctrl-u` · `Ctrl-f` `Ctrl-b` · `zz` | Half page, full page, centre cursor |
-| `[[` `]]` | Previous or next heading |
-| `h` `l` · `w` `b` `e` · `0` `^` `$` | Move by character, word, line edge; inside diagram text and inline math too; display math is one stop (`h` `l` cycle parts of a text-free diagram) |
-| `v` · `V` · `o` | Visual character or line selection; swap its end |
-| `c` · `C` | Comment on line, selection (diagram text and inline math included) or diagram part; on the whole document |
+| `{` `}` · `[[` `]]` · `gO` | Previous or next section heading; toggle the contents sidebar (also `:toc`) |
+| `h` `l` · `w` `b` `e` · `0` `^` `$` | Move by character (continuing across a paragraph's sentences), word, line edge, inline math included; display math is one stop; on a diagram `h` `l` cycle its labelled parts |
+| `v` · `V` · `o` | Visual character or screen-row selection (diagrams, display math and widgets whole); swap its end |
+| `c` · `C` | Comment on line, selection (inline math included, or diagram text reached by search) or diagram part; on the whole document |
 | Click · `Shift`+click | Move the cursor and open the thread under it; extend a character selection |
 | `r` · `Enter` | Reply to the thread on this line; show it in the panel |
 | `m` `M` | Next or previous thread |

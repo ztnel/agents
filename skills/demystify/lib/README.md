@@ -38,6 +38,8 @@ widget may carry its reported `state` (≤2000 chars of JSON).
 `render(markdown)` returns the title, HTML and ordered units (source line, kind,
 plain text, diagram labels) and widget bodies keyed by content hash. `relocate(anchor, units)` moves an anchor to the
 unique exact match of its quoted units or marks it outdated.
+`message_html(text)` renders a comment's inline spans, lists, fenced code and
+display math; the server adds it to each message as `html`.
 
 ## `latex.py`
 

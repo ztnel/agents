@@ -8,6 +8,7 @@ agent edits, and a quote of the unit text lets the anchor follow later revisions
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import html
 import re
@@ -83,6 +84,67 @@ def inline(text: str) -> str:
 
     text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", link, text)
     return re.sub(r"\x00(\d+)\x00", lambda m: codes[int(m.group(1))], text)
+
+
+@functools.lru_cache(maxsize=1024)
+def message_html(text: str) -> str:
+    """Render a comment: paragraphs, ``-``/``1.`` lists, fenced code, ``$$`` math and inline spans."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    para: list[str] = []
+    items: list[str] = []
+    ordered = False
+
+    def flush() -> None:
+        nonlocal items
+        if para:
+            out.append("<p>" + "<br>".join(inline(line) for line in para) + "</p>")
+            para.clear()
+        if items:
+            tag = "ol" if ordered else "ul"
+            out.append(f"<{tag}>" + "".join(f"<li>{inline(x)}</li>" for x in items) + f"</{tag}>")
+            items = []
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        fence = FENCE.match(stripped)
+        if fence:
+            flush()
+            marker, lang = fence.group(1), fence.group(2).lower()
+            body: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith(marker[0] * len(marker)):
+                body.append(lines[i])
+                i += 1
+            source = "\n".join(body)
+            out.append(to_mathml(source, display=True) if lang in ("math", "latex", "tex")
+                       else f"<pre><code>{html.escape(source)}</code></pre>")
+        elif stripped.startswith("$$"):
+            flush()
+            tex = stripped[2:]
+            while not tex.rstrip().endswith("$$") and i + 1 < len(lines):
+                i += 1
+                tex += "\n" + lines[i]
+            out.append(to_mathml(tex.strip().removesuffix("$$").strip(), display=True))
+        elif not stripped:
+            flush()
+        elif (item := ITEM.match(line)):
+            is_ordered = item.group(2)[0].isdigit()
+            if para or (items and is_ordered != ordered):
+                flush()
+            ordered = is_ordered
+            items.append(item.group(3))
+        elif items and line[:1].isspace():
+            items[-1] += " " + stripped  # continuation of a wrapped item
+        else:
+            if items:
+                flush()
+            para.append(stripped)
+        i += 1
+    flush()
+    return "".join(out)
 
 
 def plain(body_html: str) -> str:

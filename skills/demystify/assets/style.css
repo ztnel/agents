@@ -115,6 +115,21 @@ tr.u[data-count]::after { display: none; }
 /* Conversation panel */
 #panel { position: absolute; top: 12px; right: 12px; bottom: 12px; width: var(--panel-w); overflow-y: auto; padding: 0 14px 24px; background: #161b22f2; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px #010409cc; backdrop-filter: blur(6px); z-index: 5; }
 #panel[hidden] { display: none; }
+
+/* Contents sidebar */
+main { --toc-w: 260px; }
+#toc { position: absolute; top: 12px; left: 12px; bottom: 12px; width: var(--toc-w); overflow-y: auto; padding: 0 14px 16px; background: #161b22f2; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px #010409cc; backdrop-filter: blur(6px); z-index: 4; }
+#toc[hidden] { display: none; }
+#toc ol { list-style: none; margin: 8px 0 0; padding: 0; }
+#toc li { padding: 4px 8px; border-left: 2px solid transparent; border-radius: 0 4px 4px 0; color: var(--muted); font-size: 13px; line-height: 1.35; cursor: pointer; }
+#toc li:hover { color: var(--fg); background: var(--raised); }
+#toc li.h1 { color: var(--fg); font-weight: 600; }
+#toc li.h3 { padding-left: 20px; }
+#toc li:is(.h4, .h5, .h6) { padding-left: 32px; font-size: 12px; }
+#toc li.current { color: var(--cyan); border-left-color: var(--cyan); background: #39c5cf14; }
+#toc-close { padding: 0 7px; }
+/* The text moves right so the sidebar never covers it. */
+body.toc-open #doc { padding-left: max(calc(var(--toc-w) + 44px), calc(50% - 440px)); }
 body.pane-threads #panel { border-color: var(--cyan); }
 .panel-heading { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; margin: 0 -14px; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 1; }
 .panel-heading h2 { flex: 1; }
@@ -132,7 +147,18 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border);
 .quote { font-size: 12px; color: var(--muted); border-left: 3px solid var(--border); padding-left: 8px; margin-bottom: 6px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 5.4em; overflow: hidden; }
 .where { font: 11px var(--mono); color: var(--muted); }
 .badge { font-size: 11px; color: var(--amber); margin-left: 6px; }
-.msg { padding: 8px 0 4px; border-top: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.msg { padding: 8px 0 4px; border-top: 1px solid var(--border); overflow-wrap: anywhere; font-size: 14px; }
+.msg-body > :first-child { margin-top: 0; }
+.msg-body > :last-child { margin-bottom: 0; }
+.msg-body p, .msg-body ul, .msg-body ol { margin: 0 0 .6em; }
+.msg-body ul, .msg-body ol { padding-left: 1.3em; }
+.msg-body li { margin: .15em 0; }
+.msg-body code { font: 12.5px var(--mono); background: #6e768166; padding: .1em .3em; border-radius: 4px; }
+.msg-body pre { margin: 0 0 .6em; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }
+.msg-body pre code { background: none; padding: 0; white-space: pre; }
+.msg-body math { font-family: "STIX Two Math", "Cambria Math", math; font-size: 1.05em; }
+.msg-body math[display="block"] { margin: .4em 0 .6em; overflow-x: auto; }
+.msg-body a { color: var(--blue); }
 .msg.agent { border: 1px solid var(--purple); border-radius: 6px; padding: 8px 10px; margin: 8px 0; background: #a371f70a; }
 .byline { color: var(--muted); font-size: 12px; display: block; }
 .msg.agent .byline { color: #d2a8ff; }
@@ -165,8 +191,8 @@ button:hover { background: var(--border); }
   @page { margin: 0; }
   :root { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   html, body { height: auto; overflow: visible; background: var(--bg); }
-  header, #error, #panel, #statusline, #composer, #help, #busy, #marks { display: none !important; }
-  body.panel-open #doc { padding: 18mm 16mm; }
+  header, #error, #panel, #toc, #statusline, #composer, #help, #busy, #marks { display: none !important; }
+  body.panel-open #doc, body.toc-open #doc { padding: 18mm 16mm; }
   main { display: block; }
   #doc { overflow: visible; padding: 18mm 16mm; }
   .u { background: none !important; box-shadow: none !important; text-decoration: none !important; outline: none !important; }

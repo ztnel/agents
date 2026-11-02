@@ -16,6 +16,10 @@
   </header>
   <div id="error" role="alert" hidden></div>
   <main>
+    <nav id="toc" aria-label="Contents" hidden>
+      <div class="panel-heading"><h2>Contents</h2><button id="toc-close" type="button" aria-label="Close contents">×</button></div>
+      <ol id="toc-list"></ol>
+    </nav>
     <article id="doc" aria-label="Explainer (read-only)"></article>
     <aside id="panel" aria-label="Conversations" hidden>
       <div class="panel-heading"><h2>Conversations</h2><span id="pending-count"></span><button id="panel-close" type="button" aria-label="Close conversations">×</button></div>
@@ -43,11 +47,12 @@
   <dialog id="help" aria-labelledby="help-title">
     <div class="panel-heading"><h2 id="help-title">Keys</h2><button id="help-close" type="button" aria-label="Close help">×</button></div>
     <dl>
-      <dt>j k · 5j · gg G · 42G</dt><dd>Move to the character above or below on screen, keeping the column; a diagram is one stop (<kbd>h</kbd>/<kbd>l</kbd> step into its text). Counts repeat. <kbd>NG</kbd> jumps to source line N.</dd>
+      <dt>j k · 5j · gg G · 42G</dt><dd>Move to the character above or below on screen, keeping the column; a diagram is one stop (<kbd>h</kbd>/<kbd>l</kbd> cycle its labelled parts). Counts repeat. <kbd>NG</kbd> jumps to source line N.</dd>
       <dt>Ctrl-d Ctrl-u · Ctrl-f Ctrl-b · zz</dt><dd>Half page / full page down and up; centre the cursor.</dd>
       <dt>[[ ]]</dt><dd>Previous / next heading.</dd>
-      <dt>h l · w b e · 0 ^ $</dt><dd>Move by character, word and to the line start, first character or end. Works inside diagram text and inline math; display math is one stop, like an image; on a diagram without text <kbd>h</kbd>/<kbd>l</kbd> cycle its labelled elements.</dd>
-      <dt>v · V · o</dt><dd>Enter VISUAL (characters) or VISUAL LINE and extend with motions; <kbd>o</kbd> swaps the selection end.</dd>
+      <dt>h l · w b e · 0 ^ $</dt><dd>Move by character (continuing across a paragraph's sentences), word and to the line start, first character or end. Works inside inline math; display math is one stop, like an image; on a diagram <kbd>h</kbd>/<kbd>l</kbd> cycle its labelled parts.</dd>
+      <dt>{ } · [[ ]] · gO</dt><dd>Previous or next section heading (counts repeat) · toggle the contents sidebar (also <kbd>:toc</kbd>); click an entry to jump.</dd>
+      <dt>v · V · o</dt><dd>Enter VISUAL (characters) or VISUAL LINE (whole screen rows; diagrams, display math and widgets whole) and extend with motions; <kbd>o</kbd> swaps the selection end.</dd>
       <dt>c · C</dt><dd>Comment on the cursor line, selection or diagram element · on the whole document.</dd>
       <dt>r · Enter</dt><dd>Reply to the conversation on the cursor line · show it in the panel.</dd>
       <dt>m M</dt><dd>Next / previous conversation.</dd>
