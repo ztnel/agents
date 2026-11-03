@@ -23,6 +23,7 @@ import document
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 STATIC = {"/app.js": "text/javascript", "/style.css": "text/css", "/favicon.svg": "image/svg+xml",
+          "/highlight.min.js": "text/javascript",
           "/widget.js": "text/javascript", "/widget.css": "text/css"}
 MAX_BODY = 256 * 1024
 MAX_MESSAGE = 8000
@@ -93,7 +94,7 @@ class Session:
                 return False
             rendered = document.render(self.doc.read_text(encoding="utf-8"))
             error = ""
-        except (OSError, UnicodeDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
             mtime, rendered, error = None, self.rendered, f"cannot read {self.doc}: {exc}"
             if error == self.error:
                 return False

@@ -67,9 +67,20 @@ not a chat transcript.
 
 - **One sentence per source line.** Each source line is one selectable line on
   the page; paragraphs still render as flowing text.
+- **Source every factual claim.** Verify that each source supports the claim;
+  attach `[^1]` to its sentence and define `[^1]: [Title](https://…)` on its own
+  line. Reuse numbers. For diagrams, widgets and fenced math, put `[^1]` after
+  the opening fence's language/caption. Cite the underlying model for original
+  diagrams or calculations and label them as derived, not measured or copied.
+  Never invent sources; mark unsupported claims explicitly. Definitions become
+  the final **Sources** section; an optional `## Sources` heading is relocated there.
+  Missing definitions are flagged on the page; duplicates reject the revision.
 - Supported Markdown: headings, paragraphs, `-`/`1.` lists (nestable), `>`
   quotes, tables, fenced code, `**bold**`, `*em*`, `` `code` ``, http(s) links.
   No raw HTML or images.
+- **Code** fences take a language (`python`, `js`, `bash`, `cpp`, etc.) for local
+  syntax highlighting, including in replies. Omitted languages are auto-detected;
+  unsupported ones stay plain text.
 - **Math** is LaTeX: `$…$` inline, `$$…$$` display (one or more lines) or a
   ```` ```math ```` block. It renders as native MathML. The human can select and
   search inline math; a display equation is one stop, commented as a whole. Common commands work: scripts, `\frac`, `\sqrt`, Greek letters,
@@ -102,8 +113,11 @@ not a chat transcript.
 
 `j/k` (with counts), `gg/G`, `Ctrl-d/u/f/b`, `{`/`}` sections, `gO` contents, `h/l w/b/e 0/^/$`, `v`/`V` visual,
 `c` comment, `C` whole-document comment, `r` reply, `m/M` next/previous thread,
+`viw` word (no spaces), `vip` paragraph, `gd` cited source (`2gd` second citation),
 `Tab` switch to the thread panel, `/` search, `:w` save PDF, `:q` end session, `:e` reload,
 `?` help; clicking highlighted text opens its thread. Full reference: [README.md](README.md).
+Comments open in Insert mode; Esc enters comment Normal mode for motions and
+yanking, `i` resumes editing, and another Esc closes with the draft kept.
 
 ## Gotchas
 

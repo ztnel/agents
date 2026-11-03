@@ -34,6 +34,12 @@ let count = "";
 let prefix = "";
 let activeThread = null;
 let compose = null;         // {key, label, body}
+let editor = { head: 0, anchor: null, line: false, count: "", prefix: "", column: null };
+let pastePending = false;
+let commentUndo = [];
+let insertBefore = null;
+const jumpBack = [];
+const jumpForward = [];
 let searchTerm = "";
 let matches = [];
 let reachable = true;
@@ -74,6 +80,42 @@ async function poll() {
 function showError(text) {
   $("error").textContent = text;
   $("error").hidden = !text;
+}
+
+// Highlight a complete block so multiline strings/comments retain their grammar.
+// Redistribute its tokens into the original source-line units to preserve anchors.
+function highlightCode(root) {
+  for (const code of root.querySelectorAll("pre > code")) {
+    const lang = code.parentElement.dataset.lang;
+    if (lang && !hljs.getLanguage(lang)) continue;
+    const lines = [...code.children].filter((node) => node.classList.contains("u"));
+    const source = lines.length ? lines.map((node) => node.textContent).join("\n") : code.textContent;
+    const result = lang ? hljs.highlight(source, { language: lang }) : hljs.highlightAuto(source);
+    code.classList.add("hljs");
+    const tokens = document.createElement("template");
+    tokens.innerHTML = result.value;
+    if (!lines.length) { code.replaceChildren(tokens.content); continue; }
+    const fragments = lines.map(() => document.createDocumentFragment());
+    let row = 0;
+    function append(node, parents = []) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        node.data.split("\n").forEach((text, i) => {
+          if (i) row++;
+          let host = fragments[row];
+          for (const parent of parents) {
+            const span = parent.cloneNode(false);
+            host.append(span);
+            host = span;
+          }
+          host.append(document.createTextNode(text));
+        });
+      } else {
+        for (const child of node.childNodes) append(child, [...parents, node]);
+      }
+    }
+    for (const node of tokens.content.childNodes) append(node);
+    lines.forEach((line, i) => line.replaceChildren(fragments[i]));
+  }
 }
 
 // -- text model -------------------------------------------------------------
@@ -270,8 +312,11 @@ function apply(next) {
   const keepStart = vstart && { line: lineOf(vstart.i), col: vstart.col };
   state = next;
   if (next.html !== html) {
+    if ($("source-inspector").open) $("source-inspector").close();
+    jumpBack.length = jumpForward.length = 0;
     html = next.html;
     doc.innerHTML = html;
+    highlightCode(doc);
     mountMarks();
     unitCache = new Map();
     units = [...doc.querySelectorAll(".u")];
@@ -374,6 +419,8 @@ function renderThreads() {
   const focused = document.activeElement === input;
   const caret = [input.selectionStart, input.selectionEnd];
   const list = $("threads");
+  // Keep the composer connected while its containing thread/list is rebuilt.
+  if (list.contains(composer)) document.body.append(composer);
   list.replaceChildren();
   const threads = sortedThreads();
   for (const thread of threads) {
@@ -403,6 +450,7 @@ function renderThreads() {
     };
     list.append(card);
   }
+  highlightCode(list);
   $("empty").hidden = threads.length > 0 || !!compose;
   const pending = threads.filter(isPending).length;
   $("pending-count").textContent = pending ? `${pending} awaiting agent` : "";
@@ -568,13 +616,15 @@ function renderCursor(scroll = true) {
 }
 
 function renderStatus() {
+  const editing = compose && document.activeElement === $("composer-input");
   const shown = closed() && mode === "NORMAL" ? "CLOSED"
+    : editing && editor.anchor !== null ? (editor.line ? "VISUAL LINE" : "VISUAL")
     : mode === "VISUAL" ? (visual === "line" ? "VISUAL LINE" : "VISUAL") : mode;
   $("mode").textContent = shown;
   $("mode").className = { VISUAL: "visual", "VISUAL LINE": "visual", INSERT: "insert", COMMAND: "command", SEARCH: "command", CLOSED: "closed" }[shown] || "";
-  $("pane").textContent = pane === "doc" ? "DOC" : "THREADS";
+  $("pane").textContent = editing ? "COMMENT" : pane === "doc" ? "DOC" : "THREADS";
   document.body.classList.toggle("pane-threads", pane === "threads");
-  $("keys").textContent = count + prefix;
+  $("keys").textContent = editing ? editor.count + editor.prefix : count + prefix;
   const label = labelled()[element]?.dataset.label;
   $("position").textContent = units.length
     ? `Ln ${lineOf(cursor)}:${col + 1}${label ? ` · ${label}` : ""} · ${cursor + 1}/${units.length}` : "";
@@ -774,10 +824,16 @@ function startReply(thread) {
 
 function openComposer() {
   mode = "INSERT";
+  editor = { head: 0, anchor: null, line: false, count: "", prefix: "", column: null };
+  count = ""; prefix = "";
   if (!panelOpen) setPanel(true);
   renderThreads();
   const input = $("composer-input");
+  input.readOnly = false;
+  input.classList.remove("normal");
   input.value = drafts.get(compose.key) || "";
+  commentUndo = [];
+  insertBefore = { value: input.value, head: 0 };
   input.focus();
   $("composer").scrollIntoView({ block: "nearest" });
   renderStatus();
@@ -792,6 +848,7 @@ function leaveInsert(sent = false) {
   mode = "NORMAL";
   endVisual();
   $("composer-input").blur();
+  $("composer-input").readOnly = false;
   renderThreads();
   renderCursor(false);
   if (!sent && drafts.size) say("draft kept");
@@ -951,6 +1008,48 @@ function toggleVisual(kind) {
   renderCursor(false);
 }
 
+// Inner words exclude adjacent whitespace; punctuation is its own word.
+const wordSpans = (text) => [...text.matchAll(/[\p{L}\p{N}\p{M}_]+|[^\s\p{L}\p{N}\p{M}_]+/gu)];
+
+function innerWord(text, at) {
+  const words = wordSpans(text);
+  const word = words.find((w) => w.index + w[0].length > at) || words.at(-1);
+  return word ? [word.index, word.index + word[0].length] : null;
+}
+
+function innerParagraph(text, at) {
+  let start = 0;
+  for (const gap of text.matchAll(/\n[ \t]*\n(?:[ \t]*\n)*/g)) {
+    if (gap.index >= at) return [start, gap.index];
+    start = gap.index + gap[0].length;
+  }
+  return [start, text.length];
+}
+
+function selectObject(kind) {
+  if (!["w", "p"].includes(kind)) return;
+  if (isAtomic(cursor) || (isDiagram(cursor) && whole)) {
+    say("text objects need text under the cursor", true);
+    return;
+  }
+  let a, b;
+  if (kind === "w") {
+    const word = innerWord(unitIndex(cursor).text, col);
+    if (!word) return;
+    a = { i: cursor, col: word[0] };
+    b = { i: cursor, col: word[1] - 1 };
+  } else {
+    const [first, last] = blockOf(cursor);
+    a = { i: first, col: 0 };
+    b = { i: last, col: Math.max(0, lengthOf(last) - 1) };
+  }
+  frozenRows = null;
+  visual = "char";
+  mode = "VISUAL";
+  vstart = a;
+  moveTo(b.i, b.col, false, true);
+}
+
 const DOC_KEYS = {
   j: (n) => vertical(n), ArrowDown: (n) => vertical(n),
   k: (n) => vertical(-n), ArrowUp: (n) => vertical(-n),
@@ -961,6 +1060,8 @@ const DOC_KEYS = {
   G: (n, raw) => moveTo(raw ? indexForLine(n) : units.length - 1, 0),
   "C-d": () => pageMove(0.5), "C-u": () => pageMove(-0.5),
   "C-f": () => pageMove(1), "C-b": () => pageMove(-1),
+  "C-o": (n) => historyJump(-1, n), "C-i": (n) => historyJump(1, n),
+  K: () => inspectSources(),
   v: () => toggleVisual("char"), V: () => toggleVisual("line"),
   o: () => {
     if (!vstart) return;
@@ -998,11 +1099,71 @@ function cycleElement(direction) {
   renderCursor(false);
 }
 
+function inspectSources() {
+  const unit = units[cursor];
+  const numbers = unit?.dataset.sourceId
+    ? [unit.dataset.sourceId]
+    : [...(unit?.querySelectorAll(".source-ref") || [])].map(ref => ref.dataset.source);
+  if (!numbers.length) { say("no source attached here", true); return; }
+  const entries = [];
+  for (const number of new Set(numbers)) {
+    const source = doc.querySelector(`#source-${number}`);
+    if (!source) { say(`Source ${number} is not listed`, true); return; }
+    const entry = document.createElement("section");
+    entry.className = "source-detail";
+    entry.innerHTML = source.innerHTML;
+    entries.push(entry);
+  }
+  $("source-inspector-body").replaceChildren(...entries);
+  $("source-inspector").showModal();
+}
+
+function jumpPosition() {
+  return { i: cursor, col, whole, element, top: doc.scrollTop };
+}
+
+function historyJump(direction, n) {
+  const from = direction < 0 ? jumpBack : jumpForward;
+  const to = direction < 0 ? jumpForward : jumpBack;
+  if (!from.length) { say(`no ${direction < 0 ? "older" : "newer"} source jump`); return; }
+  endVisual();
+  pane = "doc";
+  while (n-- > 0 && from.length) {
+    to.push(jumpPosition());
+    const saved = from.pop();
+    moveTo(saved.i, saved.col, false, !saved.whole);
+    whole = saved.whole;
+    element = saved.element;
+    renderCursor(false);
+    doc.scrollTop = saved.top;
+  }
+  say("");
+}
+
+function jumpSource(number = null, nth = 1) {
+  const refs = units[cursor]?.querySelectorAll(".source-ref") || [];
+  number ??= refs[nth - 1]?.dataset.source;
+  if (!number) { say("no source attached here", true); return; }
+  const target = doc.querySelector(`#source-${number}`);
+  const i = units.indexOf(target);
+  if (i < 0) { say(`Source ${number} is not listed`, true); return; }
+  if (i === cursor) return;
+  jumpBack.push(jumpPosition());
+  if (jumpBack.length > 100) jumpBack.shift();
+  jumpForward.length = 0;
+  endVisual();
+  pane = "doc";
+  moveTo(i, 0);
+  target.scrollIntoView({ block: "center" });
+}
+
 function prefixed(key) {
   const seq = prefix + key;
   prefix = "";
   const n = takeCount();
+  if (seq === "iw" || seq === "ip") { selectObject(key); return; }
   if (seq === "gg") { moveTo(0, 0); return; }
+  if (seq === "gd") { jumpSource(null, n); return; }
   if (seq === "[[") { heading(-1, n); return; }
   if (seq === "]]") { heading(1, n); return; }
   if (seq === "gO") { setToc(!tocOpen); return; }
@@ -1016,7 +1177,7 @@ function prefixed(key) {
 function normalKey(event) {
   if (event.metaKey || event.altKey || event.key === "Shift" || event.key === "Control") return;
   const key = event.ctrlKey ? `C-${event.key.toLowerCase()}` : event.key;
-  if (event.ctrlKey && !["C-d", "C-u", "C-f", "C-b"].includes(key)) return;
+  if (event.ctrlKey && !["C-d", "C-u", "C-f", "C-b", "C-o", "C-i"].includes(key)) return;
   event.preventDefault();
   if (key === "Escape") {
     count = ""; prefix = "";
@@ -1028,6 +1189,7 @@ function normalKey(event) {
     return;
   }
   if (prefix) { prefixed(key); return; }
+  if (key === "i" && visual && pane === "doc") { prefix = "i"; renderStatus(); return; }
   if (/^[0-9]$/.test(key) && (key !== "0" || count)) { count += key; renderStatus(); return; }
   if (["g", "[", "]", "z"].includes(key)) { prefix = key; renderStatus(); return; }
   if (key === "Tab") { count = ""; togglePane(); return; }
@@ -1058,11 +1220,243 @@ function barKey(event) {
 }
 
 function insertKey(event) {
-  if (event.key === "Escape") { event.preventDefault(); leaveInsert(); collapsePanel(); }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    const input = $("composer-input");
+    const end = input.selectionStart;
+    if (insertBefore && insertBefore.value !== input.value) commentUndo.push(insertBefore);
+    insertBefore = null;
+    editor.head = end > 0 && input.value[end - 1] !== "\n" ? end - 1 : end;
+    editor.anchor = null;
+    editor.count = ""; editor.prefix = ""; editor.column = null;
+    mode = "NORMAL";
+    paintEditor();
+  }
   else if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
 }
 
+function editorLine(text, at) {
+  const start = at > 0 ? text.lastIndexOf("\n", at - 1) + 1 : 0;
+  const end = text.indexOf("\n", at);
+  return [start, end < 0 ? text.length : end];
+}
+
+function editorSelection() {
+  const text = $("composer-input").value;
+  let a = Math.min(editor.anchor ?? editor.head, editor.head);
+  let b = Math.max(editor.anchor ?? editor.head, editor.head);
+  if (editor.line) {
+    a = editorLine(text, a)[0];
+    b = Math.min(text.length, editorLine(text, b)[1] + 1);
+  } else b = Math.min(text.length, b + 1);
+  return [a, b];
+}
+
+function paintEditor() {
+  const input = $("composer-input");
+  input.readOnly = mode !== "INSERT";
+  input.classList.toggle("normal", input.readOnly);
+  if (input.readOnly) input.setSelectionRange(...editorSelection());
+  renderStatus();
+}
+
+function editorMotion(text, at, key, times) {
+  let p = at;
+  for (let n = 0; n < times; n++) {
+    const [start, end] = editorLine(text, p);
+    if (key === "h" || key === "ArrowLeft") p = Math.max(start, p - 1);
+    else if (key === "l" || key === "ArrowRight") p = Math.min(Math.max(start, end - 1), p + 1);
+    else if (key === "0") p = start;
+    else if (key === "^") p = start + (text.slice(start, end).search(/\S/) < 0 ? 0 : text.slice(start, end).search(/\S/));
+    else if (key === "$") p = Math.max(start, end - 1);
+    else if (["j", "k", "ArrowDown", "ArrowUp"].includes(key)) {
+      editor.column ??= p - start;
+      const down = key === "j" || key === "ArrowDown";
+      if (down ? end < text.length : start > 0) {
+        const [a, b] = editorLine(text, down ? end + 1 : start - 1);
+        p = Math.min(a + editor.column, Math.max(a, b - 1));
+      }
+    } else if (["w", "b", "e"].includes(key)) {
+      const words = wordSpans(text);
+      const word = key === "b" ? words.reverse().find((w) => w.index < p)
+        : words.find((w) => key === "w" ? w.index > p : w.index + w[0].length - 1 > p);
+      if (word) p = key === "e" ? word.index + word[0].length - 1 : word.index;
+      else if (key !== "b") p = Math.max(0, text.length - 1);
+    }
+  }
+  return p;
+}
+
+async function yankComment(a, b) {
+  const current = compose;
+  const text = $("composer-input").value.slice(a, b);
+  editor.head = a;
+  editor.anchor = null; editor.line = false;
+  mode = "NORMAL";
+  paintEditor();
+  try {
+    await navigator.clipboard.writeText(text);
+    if (compose === current) say("yanked");
+  } catch (exc) {
+    say(`Could not copy: ${exc.message}`, true);
+  }
+}
+
+function replaceComment(a, b, text) {
+  const input = $("composer-input");
+  if (input.value.length - (b - a) + text.length > input.maxLength) {
+    say(`Comment exceeds ${input.maxLength} characters`, true);
+    return false;
+  }
+  const value = input.value.slice(0, a) + text + input.value.slice(b);
+  if (value === input.value) return true;
+  commentUndo.push({ value: input.value, head: editor.head });
+  input.value = value;
+  editor.anchor = null; editor.line = false; editor.column = null;
+  editor.head = a + Math.max(0, text.length - 1);
+  const [start, end] = editorLine(input.value, editor.head);
+  editor.head = Math.min(editor.head, Math.max(start, end - 1));
+  paintEditor();
+  return true;
+}
+
+async function pasteComment() {
+  if (pastePending) return;
+  const input = $("composer-input");
+  const current = compose, value = input.value, head = editor.head;
+  const anchor = editor.anchor, line = editor.line;
+  const range = editor.anchor !== null ? editorSelection()
+    : [Math.min(head + 1, editorLine(value, head)[1]), Math.min(head + 1, editorLine(value, head)[1])];
+  pastePending = true;
+  try {
+    const text = (await navigator.clipboard.readText()).replace(/\r\n?/g, "\n");
+    if (compose !== current || mode !== "NORMAL" || document.activeElement !== input
+        || input.value !== value || editor.head !== head || editor.anchor !== anchor || editor.line !== line) {
+      say("Paste cancelled: the comment or cursor changed", true);
+      return;
+    }
+    if (text) replaceComment(...range, text);
+  } catch (exc) {
+    say(`Could not paste: ${exc.message}`, true);
+  } finally {
+    pastePending = false;
+  }
+}
+
+function editorKey(event) {
+  if (mode === "INSERT") { insertKey(event); return; }
+  if (event.metaKey || event.ctrlKey || event.altKey || ["Shift", "Control"].includes(event.key)) return;
+  event.preventDefault();
+  const key = event.key;
+  const input = $("composer-input");
+  const text = input.value;
+  if (key === "Escape") {
+    if (editor.anchor !== null || editor.prefix || editor.count) {
+      editor.anchor = null; editor.line = false; editor.prefix = ""; editor.count = "";
+      paintEditor();
+    } else collapsePanel();
+    return;
+  }
+  if (key === "Tab") { leaveInsert(); pane = "doc"; renderStatus(); return; }
+  if (/^\d$/.test(key) && (key !== "0" || editor.count)) {
+    editor.count += key; renderStatus(); return;
+  }
+  if (["i", "a", "A"].includes(key) && !editor.prefix && editor.anchor === null) {
+    const end = editorLine(text, editor.head)[1];
+    const at = key === "A" ? end : key === "a" ? Math.min(editor.head + 1, end) : editor.head;
+    mode = "INSERT";
+    editor.count = ""; editor.column = null;
+    input.readOnly = false;
+    input.classList.remove("normal");
+    input.setSelectionRange(at, at);
+    insertBefore = { value: input.value, head: editor.head };
+    renderStatus();
+    return;
+  }
+  if (key === "i" && (editor.anchor !== null || editor.prefix === "y")) {
+    editor.prefix += "i"; renderStatus(); return;
+  }
+  const seq = editor.prefix + key;
+  if (["iw", "ip", "yiw", "yip"].includes(seq)) {
+    const range = key === "w" ? innerWord(text, editor.head) : innerParagraph(text, editor.head);
+    editor.prefix = ""; editor.count = "";
+    if (!range || range[0] === range[1]) return;
+    editor.head = range[1] - 1;
+    if (seq.startsWith("y")) { editor.head = range[0]; yankComment(...range); }
+    else { editor.anchor = range[0]; editor.line = false; paintEditor(); }
+    return;
+  }
+  if (key === "y" && !editor.prefix && editor.anchor !== null) {
+    editor.count = "";
+    yankComment(...editorSelection()); return;
+  }
+  if (["y", "g"].includes(key) && !editor.prefix) {
+    editor.prefix = key; renderStatus(); return;
+  }
+  const n = Math.max(1, Number(editor.count) || 1);
+  editor.count = "";
+  if (!editor.prefix && key === "u") {
+    let restored = false;
+    for (let i = 0; i < n && commentUndo.length; i++) {
+      const previous = commentUndo.pop();
+      input.value = previous.value;
+      editor.head = previous.head;
+      restored = true;
+    }
+    editor.anchor = null; editor.line = false; editor.column = null;
+    paintEditor();
+    say(restored ? "undone" : "nothing to undo");
+    return;
+  }
+  if (!editor.prefix && key === "x") {
+    const range = editor.anchor !== null ? editorSelection()
+      : [editor.head, Math.min(editorLine(text, editor.head)[1], editor.head + n)];
+    if (range[0] === range[1]) return;
+    yankComment(...range);
+    replaceComment(...range, "");
+    return;
+  }
+  if (!editor.prefix && key === "p") { pasteComment(); return; }
+  const motion = ["h", "j", "k", "l", "ArrowLeft", "ArrowDown", "ArrowUp", "ArrowRight", "w", "b", "e", "0", "^", "$"].includes(key);
+  if (!["j", "k", "ArrowDown", "ArrowUp"].includes(key)) editor.column = null;
+  if (editor.prefix === "y") {
+    const [start] = editorLine(text, editor.head);
+    if (key === "y") {
+      const last = editorMotion(text, editor.head, "j", n - 1);
+      yankComment(start, Math.min(text.length, editorLine(text, last)[1] + 1));
+    } else if (motion) {
+      const target = editorMotion(text, editor.head, key, n);
+      if (["j", "k", "ArrowDown", "ArrowUp"].includes(key)) {
+        yankComment(Math.min(start, editorLine(text, target)[0]),
+          Math.min(text.length, editorLine(text, Math.max(editor.head, target))[1] + 1));
+      } else {
+        const inclusive = key === "e" || key === "$";
+        yankComment(Math.min(editor.head, target), Math.max(editor.head, target) + (inclusive ? 1 : 0));
+      }
+    }
+  } else if (seq === "gg") editor.head = 0;
+  else if (key === "G") editor.head = text.length ? editorLine(text, text.length)[0] : 0;
+  else if (motion) editor.head = editorMotion(text, editor.head, key, n);
+  else if (key === "v" || key === "V") {
+    const line = key === "V";
+    if (editor.anchor !== null && editor.line === line) { editor.anchor = null; editor.line = false; }
+    else { editor.anchor ??= editor.head; editor.line = line; }
+  }
+  editor.prefix = "";
+  paintEditor();
+}
+
 document.addEventListener("keydown", (event) => {
+  if ($("source-inspector").open) {
+    if (event.key === "Escape" || event.key === "q") {
+      event.preventDefault();
+      $("source-inspector").close();
+    } else if (["j", "k"].includes(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      $("source-inspector-body").scrollBy({ top: event.key === "j" ? 48 : -48 });
+    }
+    return;
+  }
   if (!$("busy").hidden) {
     event.preventDefault();
     if (event.key === "Escape") $("busy").dismiss?.();
@@ -1073,14 +1467,23 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.isComposing) return;
-  if (mode === "INSERT") insertKey(event);
+  if (compose && event.target === $("composer-input")) editorKey(event);
+  else if (mode === "INSERT") insertKey(event);
   else if (mode === "COMMAND" || mode === "SEARCH") barKey(event);
   else normalKey(event);
 });
 
 $("command").addEventListener("input", () => { if (mode === "SEARCH") runSearch($("command").value); });
 $("composer").addEventListener("submit", (event) => { event.preventDefault(); send(); });
-$("composer-input").addEventListener("focus", () => { if (compose && mode !== "INSERT") { mode = "INSERT"; renderStatus(); } });
+$("composer-input").addEventListener("focus", () => { if (compose) renderStatus(); });
+$("composer-input").addEventListener("mouseup", () => {
+  if (!compose || mode === "INSERT") return;
+  const input = $("composer-input");
+  editor.head = input.selectionStart;
+  editor.anchor = input.selectionEnd > input.selectionStart ? input.selectionEnd - 1 : null;
+  editor.line = false;
+  paintEditor();
+});
 $("help-button").onclick = () => $("help").showModal();
 // -- widgets: sandboxed iframes that talk only through postMessage ------------
 const widgetState = new WeakMap(); // iframe -> latest control values, sent with comments
@@ -1123,8 +1526,9 @@ addEventListener("blur", () => setTimeout(() => {
   say("widget · Esc returns to the page");
 }));
 
-// Esc, × and the threads button all fold the conversation away and return to the page.
+// Closing a conversation preserves its draft, including from the editor's Normal mode.
 function collapsePanel() {
+  if (compose) leaveInsert();
   activeThread = null;
   pane = "doc";
   setPanel(false);
@@ -1138,6 +1542,7 @@ $("panel-close").onclick = collapsePanel;
 $("toc-close").onclick = () => setToc(false);
 setToc(tocOpen);
 $("help-close").onclick = () => $("help").close();
+$("source-inspector-close").onclick = () => $("source-inspector").close();
 
 
 function caretAt(x, y) {
@@ -1168,7 +1573,17 @@ function threadsAtPoint(unit, point) {
 }
 
 doc.addEventListener("click", (event) => {
+  const citation = event.target.closest(".source-ref");
+  if (citation) {
+    event.preventDefault();
+    if (compose) leaveInsert();
+    const origin = units.indexOf(citation.closest(".u"));
+    if (origin >= 0 && origin !== cursor) moveTo(origin, 0, false);
+    jumpSource(citation.dataset.source);
+    return;
+  }
   if (mode === "INSERT" || mode === "COMMAND" || mode === "SEARCH") return;
+  if (compose) leaveInsert();
   const unit = event.target.closest(".u");
   if (!unit) return;
   pane = "doc";

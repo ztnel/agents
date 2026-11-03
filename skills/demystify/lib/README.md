@@ -40,6 +40,13 @@ plain text, diagram labels) and widget bodies keyed by content hash. `relocate(a
 unique exact match of its quoted units or marks it outdated.
 `message_html(text)` renders a comment's inline spans, lists, fenced code and
 display math; the server adds it to each message as `html`.
+Code fences retain `data-lang`; the browser's local Highlight.js bundle colours
+both page and comment code, preserving source-line units and selection anchors.
+Numeric `[^N]` citations render as links to a generated final Sources section;
+`[^N]: …` defines a source. Diagram, widget and math fences accept citations in
+their opening info. Badge digits stay outside selectable anchor text. Missing
+definitions produce a visible warning entry; duplicate definitions raise
+`ValueError`, reported by the server while retaining the last valid revision.
 
 ## `latex.py`
 

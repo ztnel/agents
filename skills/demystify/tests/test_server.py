@@ -75,6 +75,20 @@ class ServerTest(unittest.TestCase):
             self.call("/agent/post", {"document": True, "content": "hi"})
         self.assertEqual(ctx.exception.code, 400)
 
+    def test_bad_source_revision_keeps_last_page_and_recovers(self):
+        before = self.call("/api/state")["html"]
+        self.doc.write_text("Claim [^1].\n\n[^1]: First\n[^1]: Duplicate\n")
+        self.srv.session.mtime = None
+        self.srv.session.reload()
+        state = self.call("/api/state")
+        self.assertIn("duplicate source definition", state["error"])
+        self.assertEqual(state["html"], before)
+        self.doc.write_text("Claim [^1].\n\n[^1]: Correct source\n")
+        self.srv.session.reload()
+        state = self.call("/api/state")
+        self.assertEqual(state["error"], "")
+        self.assertIn('id="source-1"', state["html"])
+
     def test_excerpt_anchor_must_match_selected_lines(self):
         self.call("/api/comment", {"start": 3, "end": 4, "excerpt": "one.  Line", "col": 5, "content": "?"})
         pending = self.call("/agent/read")["pending"][0]

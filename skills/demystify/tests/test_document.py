@@ -87,8 +87,68 @@ class RenderTest(unittest.TestCase):
         self.assertNotIn("<script>", rendered.html)
         self.assertEqual((rendered.title, rendered.units[1].text), ("Title", "[widget] Duty explorer"))
 
+    def test_code_language_is_preserved_in_document_and_comments(self):
+        source = "```python\nprint('<script>')\n```"
+        for html in (document.render(source).html, document.message_html(source)):
+            self.assertIn('data-lang="python"', html)
+            self.assertIn("&lt;script&gt;", html)
+            self.assertNotIn("<script>", html)
+        html = document.message_html("```widget\n<script>no()</script>\n```")
+        self.assertIn("<pre", html)
+        self.assertNotIn("<iframe", html)
+        self.assertNotIn("<script>", html)
+
     def test_text_keeps_edge_spaces(self):
         self.assertIn("<mtext>\u00a0V</mtext>", document.render("$480\\text{ V}$").html)
+
+    def test_sources_attach_to_claims_and_render_last_in_numeric_order(self):
+        rendered = document.render(
+            "# Demo\n\nClaim. [^2][^1]\n\n## Sources\n"
+            "[^2]: [Second](https://example.com/two)\n"
+            "[^1]: First source\n\n## Another section\n\nMore text."
+        )
+        self.assertIn('href="#source-2" data-source="2"', rendered.html)
+        self.assertEqual(rendered.units[1].text, "Claim.")
+        self.assertEqual([u.kind for u in rendered.units[-3:]], ["heading", "source", "source"])
+        self.assertEqual([u.text for u in rendered.units[-3:]], ["Sources", "First source", "Second"])
+        self.assertLess(rendered.html.index("Another section"), rendered.html.index('id="sources"'))
+        self.assertEqual(rendered.html.count(">Sources</h2>"), 1)
+        self.assertIn('href="https://example.com/two"', rendered.html)
+        self.assertEqual(rendered.units[1].line, 3)
+
+    def test_sources_on_figures_math_lists_and_tables(self):
+        rendered = document.render(
+            "```svg [^1]\n<svg><text>Label</text></svg>\n```\n\n"
+            "```widget Caption [^1]\n<p>Widget</p>\n```\n\n"
+            "```math [^1]\nx^2\n```\n\n- Claim [^1]\n\n"
+            "| A | B |\n|---|---|\n| Value [^1] | 2 |\n\n[^1]: Reference"
+        )
+        self.assertEqual(rendered.html.count('href="#source-1"'), 5)
+        self.assertIn('<figcaption class="diagram-sources">', rendered.html)
+        self.assertIn('title="Caption"', rendered.html)
+        self.assertNotIn("[^1]", rendered.html)
+        self.assertEqual(next(u.text for u in rendered.units if u.kind == "row"), "A | B")
+        self.assertEqual([u.text for u in rendered.units if u.kind == "row"][-1], "Value | 2")
+
+    def test_citation_syntax_is_literal_in_code_math_and_source_definitions(self):
+        rendered = document.render(
+            "Literal `[^3]` and $[^4]$.\n\n```text\n[^5]: Not a source\n[^6]\n```\n\n"
+            "Claim [^1].\n\n[^1]: A literal `[^2]`"
+        )
+        self.assertEqual(rendered.html.count('class="source-ref"'), 1)
+        self.assertIn("<code>[^3]</code>", rendered.html)
+        self.assertIn("[^5]: Not a source", rendered.html)
+        self.assertEqual([u.kind for u in rendered.units].count("source"), 1)
+
+    def test_missing_and_duplicate_source_definitions_are_explicit(self):
+        html = document.render("Claim [^9].").html
+        self.assertIn('id="source-9"', html)
+        self.assertIn('data-missing="true"', html)
+        self.assertIn("Missing source:", html)
+        with self.assertRaisesRegex(ValueError, "duplicate source definition"):
+            document.render("[^1]: First\n[^1]: Duplicate")
+        self.assertIn(">Sources</h2>", document.render("## Sources\n\nOrdinary section.").html)
+        self.assertIn("&lt;script&gt;", document.render("[^1]: <script>bad()</script>").html)
 
 
 class RelocateTest(unittest.TestCase):

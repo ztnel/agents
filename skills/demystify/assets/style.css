@@ -45,6 +45,18 @@ main { display: flex; flex: 1; min-height: 0; position: relative; --panel-w: min
 #doc pre { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px 0; overflow-x: auto; }
 #doc pre code { background: none; padding: 0; display: block; }
 #doc pre .u { display: block; padding: 0 14px; white-space: pre; }
+.hljs-comment, .hljs-quote { color: #8b949e; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #ff7b72; }
+.hljs-string, .hljs-regexp, .hljs-doctag { color: #a5d6ff; }
+.hljs-number, .hljs-symbol, .hljs-attr, .hljs-variable, .hljs-built_in { color: #79c0ff; }
+.hljs-title, .hljs-section { color: #d2a8ff; }
+.hljs-type, .hljs-class, .hljs-title.class_, .hljs-attribute { color: #ffa657; }
+.hljs-tag, .hljs-name { color: #7ee787; }
+.hljs-meta { color: #79c0ff; }
+.hljs-addition { color: #aff5b4; background: #033a16; }
+.hljs-deletion { color: #ffdcd7; background: #67060c; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
 #doc blockquote { margin: 0 0 1em; padding: 0 1em; color: var(--muted); border-left: 4px solid var(--border); }
 #doc blockquote .u { display: block; }
 #doc math { font-family: "STIX Two Math", "Cambria Math", math; font-size: 1.1em; }
@@ -59,6 +71,19 @@ main { display: flex; flex: 1; min-height: 0; position: relative; --panel-w: min
 #doc figure.u-widget iframe { display: block; width: 100%; height: 200px; border: 0; background: transparent; color-scheme: dark; }
 #doc figure figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
 #doc li { margin: .2em 0; }
+#doc .source-ref { display: inline-block; position: relative; top: -.45em; margin: 0 .12em; padding: 0 .1em; color: #859fbd; font: .72em/1 var(--mono); text-decoration: none; user-select: none; -webkit-user-select: none; }
+.source-ref::before, .source-number::before { content: attr(data-source); }
+#doc .source-ref:hover, #doc .source-ref:focus-visible { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
+#doc .source-ref:focus-visible { outline: 1px solid var(--blue); outline-offset: 3px; }
+#doc .source-number { display: inline-block; min-width: 2em; color: var(--muted); font: .85em var(--mono); user-select: none; -webkit-user-select: none; }
+.source-number::after { content: "."; }
+#doc .sources-list { list-style: none; padding: 0; }
+#doc .sources-list > li { display: block; padding: 8px 0; overflow-wrap: anywhere; }
+#doc .sources-list [data-missing] { color: #ff7b72; }
+#doc .diagram-sources { text-align: left; font-size: 12px; }
+.diagram-sources::before { content: "Sources "; }
+#doc figure.u-diagram.cursor.no-char:has(.diagram-sources) { outline: none; }
+#doc figure.u-diagram.cursor.no-char:has(.diagram-sources) > svg { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 3px; }
 
 /* Units, cursor, selection, threads */
 .u { border-radius: 3px; scroll-margin: 25vh 0; position: relative; }
@@ -164,6 +189,8 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border);
 .msg.agent .byline { color: #d2a8ff; }
 #composer { margin-top: 10px; padding: 10px; border: 1px solid var(--cyan); border-radius: 6px; background: var(--panel); }
 #composer textarea { display: block; width: 100%; min-height: 70px; max-height: 240px; resize: vertical; margin: 6px 0; padding: 8px; font: inherit; font-size: 14px; color: var(--fg); background: var(--raised); border: 1px solid var(--border); border-radius: 6px; outline: none; }
+#composer textarea.normal { caret-color: transparent; border-color: var(--cyan); }
+#composer textarea.normal::selection { color: var(--bg); background: var(--cyan); }
 
 /* Status line */
 #statusline { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--panel); border-top: 1px solid var(--border); font: 12px/1.6 var(--mono); }
@@ -183,6 +210,13 @@ button { font: inherit; color: var(--fg); background: var(--raised); border: 1px
 button:hover { background: var(--border); }
 #help { width: min(640px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; }
 #help::backdrop { background: #0009; }
+#source-inspector { width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 64px); padding: 18px 20px; color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 16px 48px #0006; }
+#source-inspector::backdrop { background: #0003; }
+#source-inspector-body { max-height: calc(100dvh - 160px); overflow-y: auto; overflow-wrap: anywhere; }
+.source-detail { padding: 12px 0; }
+.source-detail + .source-detail { border-top: 1px solid var(--border); }
+.source-detail a { color: var(--blue); }
+.source-detail .source-number { display: inline-block; min-width: 2em; color: var(--muted); font: .85em var(--mono); }
 #help dt { color: var(--cyan); font-family: var(--mono); margin-top: 10px; }
 #help dd { margin: 2px 0 0; color: var(--muted); }
 
@@ -191,13 +225,14 @@ button:hover { background: var(--border); }
   @page { margin: 0; }
   :root { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   html, body { height: auto; overflow: visible; background: var(--bg); }
-  header, #error, #panel, #toc, #statusline, #composer, #help, #busy, #marks { display: none !important; }
+  header, #error, #panel, #toc, #statusline, #composer, #help, #source-inspector, #busy, #marks { display: none !important; }
   body.panel-open #doc, body.toc-open #doc { padding: 18mm 16mm; }
   main { display: block; }
   #doc { overflow: visible; padding: 18mm 16mm; }
   .u { background: none !important; box-shadow: none !important; text-decoration: none !important; outline: none !important; }
   .u[data-count]::after { display: none; }
   #doc svg [data-label].element { filter: none; }
+  #doc figure.u-diagram > svg { outline: none !important; }
   #doc figure, #doc pre, #doc table, #doc tr, #doc h1, #doc h2, #doc h3 { break-inside: avoid; }
   #doc h1, #doc h2, #doc h3 { break-after: avoid; }
 }

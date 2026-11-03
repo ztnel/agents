@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-11-02
+
+### Added
+- Numbered claim/diagram citations, a final Sources section and `gd` source jumps.
+- `Ctrl-o`/`Ctrl-i` source-jump history restores cursor, diagram part and viewport.
+- `K` inspects cited reference details in a floating window without navigating away.
+- Comment `u` undo for deletions, paste and Insert-mode sessions.
+- `demystify` inner text objects: `viw` selects a word without adjacent spaces; `vip` selects a paragraph.
+- Comment Normal mode: Esc leaves Insert mode without closing the editor; Vim motions, visual selections and clipboard yanks work inside it, and `i` resumes editing.
+- Comment editing: `x` deletes, `a` inserts after the cursor, `A` inserts at line end, and `p` pastes the clipboard once. Inline keybinding hints are removed.
+- Local Highlight.js syntax highlighting for code fences in explainers and comment threads, preserving source-line anchors.
+
+### Fixed
+- Live thread refreshes no longer detach an open comment editor while a message is being sent.
+
 ## [0.4.0] - Unreleased
 
 ### Added

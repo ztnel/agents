@@ -6,6 +6,7 @@
   <title>demystify</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
+  <script src="/highlight.min.js"></script>
   <script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -24,14 +25,13 @@
     <aside id="panel" aria-label="Conversations" hidden>
       <div class="panel-heading"><h2>Conversations</h2><span id="pending-count"></span><button id="panel-close" type="button" aria-label="Close conversations">×</button></div>
       <div id="threads"></div>
-      <p id="empty" class="hint">No comments yet. Move with <kbd>j</kbd>/<kbd>k</kbd>, select with <kbd>v</kbd>/<kbd>V</kbd>, comment with <kbd>c</kbd>.</p>
+      <p id="empty" class="hint">No comments yet.</p>
     </aside>
   </main>
   <div id="busy" role="status" aria-live="polite" hidden><div class="busy-card"><span class="spinner"></span><div><div class="busy-title">Preparing PDF</div><div class="busy-sub">The print dialog opens when ready · <kbd>Esc</kbd> to dismiss</div></div></div></div>
   <form id="composer" hidden>
     <div id="composer-target" class="byline"></div>
     <textarea id="composer-input" maxlength="8000" placeholder="Ask, challenge or clarify…" aria-label="Comment"></textarea>
-    <div class="hint">Enter send · Shift+Enter newline · Esc close (draft kept)</div>
   </form>
   <footer id="statusline">
     <span id="mode">NORMAL</span>
@@ -44,6 +44,10 @@
     <span id="position"></span>
     <button id="help-button" type="button">? help</button>
   </footer>
+  <dialog id="source-inspector" aria-labelledby="source-inspector-title">
+    <div class="panel-heading"><h2 id="source-inspector-title">Sources</h2><button id="source-inspector-close" type="button" aria-label="Close source inspector">×</button></div>
+    <div id="source-inspector-body"></div>
+  </dialog>
   <dialog id="help" aria-labelledby="help-title">
     <div class="panel-heading"><h2 id="help-title">Keys</h2><button id="help-close" type="button" aria-label="Close help">×</button></div>
     <dl>
@@ -52,13 +56,20 @@
       <dt>[[ ]]</dt><dd>Previous / next heading.</dd>
       <dt>h l · w b e · 0 ^ $</dt><dd>Move by character (continuing across a paragraph's sentences), word and to the line start, first character or end. Works inside inline math; display math is one stop, like an image; on a diagram <kbd>h</kbd>/<kbd>l</kbd> cycle its labelled parts.</dd>
       <dt>{ } · [[ ]] · gO</dt><dd>Previous or next section heading (counts repeat) · toggle the contents sidebar (also <kbd>:toc</kbd>); click an entry to jump.</dd>
+      <dt>gd · 2gd</dt><dd>Jump to cited source; second attached citation.</dd>
+      <dt>K (Shift+k)</dt><dd>Inspect attached sources without leaving the text; Esc closes.</dd>
+      <dt>Ctrl-o · Ctrl-i</dt><dd>Back or forward through source jumps (counts repeat).</dd>
       <dt>v · V · o</dt><dd>Enter VISUAL (characters) or VISUAL LINE (whole screen rows; diagrams, display math and widgets whole) and extend with motions; <kbd>o</kbd> swaps the selection end.</dd>
+      <dt>viw · vip</dt><dd>Select the inner word without adjacent spaces · select the whole paragraph.</dd>
       <dt>c · C</dt><dd>Comment on the cursor line, selection or diagram element · on the whole document.</dd>
       <dt>r · Enter</dt><dd>Reply to the conversation on the cursor line · show it in the panel.</dd>
       <dt>m M</dt><dd>Next / previous conversation.</dd>
       <dt>Tab</dt><dd>Open the floating conversation panel, then switch focus between it and the document; <kbd>Esc</kbd> closes the panel and returns to the document. In the panel: <kbd>j</kbd>/<kbd>k</kbd> move, <kbd>r</kbd> reply, <kbd>Enter</kbd> jump to its text. (<kbd>Ctrl-w</kbd> is not bound: browsers close the tab.)</dd>
       <dt>/ · n N · :noh</dt><dd>Search (smartcase) any text, diagram labels and inline math included, landing on the exact character; next/previous match; clear highlights.</dd>
-      <dt>Enter · Shift+Enter · Esc</dt><dd>In INSERT: send; newline; close the conversation keeping the draft.</dd>
+      <dt>Enter · Shift+Enter · Esc</dt><dd>Comment INSERT: send; newline; enter Normal mode in the text box.</dd>
+      <dt>i a A · x · p · u</dt><dd>Comment NORMAL: insert before cursor, after cursor, at line end · delete character or selection · paste clipboard once after cursor (replacing a selection) · undo. Each Insert-mode session is one undo step.</dd>
+      <dt>h j k l · w b e · 0 ^ $ · gg G</dt><dd>Comment NORMAL: navigate characters and logical lines · words · line edges · top/bottom. Counts repeat motions.</dd>
+      <dt>v V · viw vip · y · yy · yiw yip</dt><dd>Comment NORMAL: select characters/lines · word/paragraph · yank selection · yank line · yank word/paragraph to the clipboard. Esc clears a selection or closes the conversation, keeping the draft; Tab returns to the page.</dd>
       <dt>:w · :q · :wq · :e · :N</dt><dd>Save as PDF via the print dialog · end the session · both · reload the page · go to source line N.</dd>
       <dt>Click · Shift+click</dt><dd>Move the cursor and open the conversation on highlighted text · extend a character selection.</dd>
       <dt>Enter · Esc</dt><dd>On an interactive widget: use its controls; return to the document. Comments include the widget's current values.</dd>
