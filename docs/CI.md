@@ -6,7 +6,8 @@ Workflow permissions are limited to `contents: read`.
 
 ## Regression
 
-The `regression` job uses Python 3.14 and runs [`tests/run_ci.py`](../tests/run_ci.py):
+The `regression` job uses Python 3.14 and runs [`tests/run_ci.py`](../tests/run_ci.py)
+inside the `skills/_lib` uv environment, which provides `mcp` for the feedback servers:
 
 - Compile Python sources and validate the workflow, plugin, and MCP manifests.
 - Run every Python `test_*.py` and the tuicr shell suites.
@@ -16,12 +17,12 @@ The `regression` job uses Python 3.14 and runs [`tests/run_ci.py`](../tests/run_
 Run the same harness locally from the repository root:
 
 ```console
-python3 tests/run_ci.py
+uv run --frozen --project skills/_lib python tests/run_ci.py
 ```
 
 ## Package smoke
 
-After regression succeeds, `smoke` installs the pinned Copilot CLI baseline on
+After regression succeeds, `smoke` installs `uv` and the pinned Copilot CLI baseline on
 Node 22, installs the checkout as a plugin, and runs
 [`tests/copilot_smoke.py`](../tests/copilot_smoke.py). An isolated `COPILOT_HOME`
 keeps discovery independent of existing user configuration.

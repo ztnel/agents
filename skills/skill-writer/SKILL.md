@@ -34,7 +34,7 @@ stop a skill loading, and `--list-names` must keep reporting it (see *Prove it l
 
 `~/.agents/skills/_lib/` is a **shared package, not a skill** — it has no `SKILL.md` and
 the linter skips it. It holds the primitives every skill needs (`proc`, `cli`, `paths`,
-`tmuxio`, `tuicrio`, `copilot`, `gitio`, `lock`, `errors`), so a portability fix lands
+`tmuxio`, `tuicrio`, `gitio`, `lock`, `errors`, `feedback`), so a portability fix lands
 once instead of once per skill. Read `_lib/README.md` before writing a new entry point.
 
 Bootstrap it by walking up to the skills root — the depth depends on where the script

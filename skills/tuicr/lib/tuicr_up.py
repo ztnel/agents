@@ -3,9 +3,9 @@
 
 Refreshes the review refs (so the diff reflects the remote, not a stale local
 copy), opens a detached tmux window running tuicr over the resolved revset,
-starts the review watch daemon for the current Copilot CLI session, switches
-focus to the review window, and blocks until tuicr exits — then surfaces
-whatever tuicr exported.
+switches focus to the review window, and blocks until tuicr exits — then
+persists the deterministic close report that the tuicr feedback MCP server
+delivers as the review's closure event.
 
 Usage::
 
@@ -35,13 +35,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_lib"))
 
 from skillkit import paths  # noqa: E402
 from skillkit.approval import ApprovalReceipt, ReviewedFile  # noqa: E402
-from skillkit.copilot import session_for_pane_pid  # noqa: E402
 from skillkit.cli import parse_metadata, run_main  # noqa: E402
 from skillkit.errors import SkillError  # noqa: E402
 from skillkit.gitio import git  # noqa: E402
 from skillkit.proc import run, which  # noqa: E402
-from skillkit.tmuxio import inside_tmux, pane_exists, pane_pid  # noqa: E402
-from tuicr_watch import WatchConfig, WakeDeliverer, resolve_target  # noqa: E402
+from skillkit.tmuxio import inside_tmux, pane_exists  # noqa: E402
 import questions  # noqa: E402
 
 #: ANSI colours for the `[tuicr]` log prefix. Suppressed when stdout is not a
@@ -50,8 +48,8 @@ _GREEN = "\033[0;32m"
 _YELLOW = "\033[1;33m"
 _RED = "\033[0;31m"
 _RESET = "\033[0m"
-_WATCH_RETRY_DELAY = 0.1
-_WATCH_RETRY_LIMIT = 20
+_SLUG_RETRY_DELAY = 0.1
+_SLUG_RETRY_LIMIT = 20
 
 
 def _log(colour: str, message: str, stream=sys.stdout) -> None:
@@ -119,17 +117,6 @@ def resolve_revset(target_dir: str) -> str:
     return revset
 
 
-def resolve_cli_session() -> str:
-    """Resolve the Copilot CLI session bound to the current tmux pane."""
-    pane = os.environ.get("TMUX_PANE", "")
-    if not pane:
-        raise SkillError("could not resolve the current tmux pane")
-    pid = pane_pid(pane)
-    if pid is None:
-        raise SkillError(f"could not resolve the pane PID for {pane}")
-    return session_for_pane_pid(pid).session_id
-
-
 def active_review_slug(target_dir: str) -> str:
     """Resolve the single active tuicr review session for *target_dir*.
 
@@ -137,7 +124,7 @@ def active_review_slug(target_dir: str) -> str:
     session has not settled yet, the helper retries briefly before failing so
     the launcher does not race the TUI startup.
     """
-    for attempt in range(_WATCH_RETRY_LIMIT):
+    for attempt in range(_SLUG_RETRY_LIMIT):
         result = run(["tuicr", "review", "list", "--repo", target_dir])
         if result.ok:
             try:
@@ -152,40 +139,9 @@ def active_review_slug(target_dir: str) -> str:
                 raise SkillError(
                     f"multiple active tuicr sessions for {target_dir}: {', '.join(active)}"
                 )
-        if attempt + 1 < _WATCH_RETRY_LIMIT:
-            time.sleep(_WATCH_RETRY_DELAY)
+        if attempt + 1 < _SLUG_RETRY_LIMIT:
+            time.sleep(_SLUG_RETRY_DELAY)
     raise SkillError(f"could not resolve an active tuicr session for {target_dir}")
-
-
-def start_watch(target_dir: str, session_slug: str, cli_session: str) -> str:
-    """Start the watch daemon for *session_slug* and return its pidfile label."""
-    watcher = Path(__file__).resolve().parent / "watch_up.py"
-    if not watcher.is_file():
-        raise SkillError(f"Watch helper not found: {watcher}")
-
-    name = f"tuicr-{paths.short_hash(target_dir, session_slug, cli_session)}"
-    args = [
-        sys.executable,
-        str(watcher),
-        "--repo", target_dir,
-        "--session", session_slug,
-        "--cli-session", cli_session,
-        "--name", name,
-    ]
-    result = run(args)
-    if result.stderr:
-        print(result.stderr, file=sys.stderr, end="")
-    if not result.ok:
-        raise SkillError(f"could not start watch daemon: {result.stderr or result.stdout}", code=result.returncode)
-    if result.stdout:
-        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
-    return name
-
-
-def stop_watch(name: str) -> None:
-    """Stop the watch daemon started under *name*."""
-    watcher = Path(__file__).resolve().parent / "watch_up.py"
-    run([sys.executable, str(watcher), "--stop", name])
 
 
 def _read_json_output(result) -> dict:
@@ -245,34 +201,15 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
     }
 
 
-def wake_closed_review(target_dir: str, slug: str, cli_session: str, verdict: dict) -> None:
-    """Wake the spawning CLI with the persisted close verdict."""
-    state_dir = paths.state_dir("tuicr", "reviews", create=True)
-    state_file = state_dir / f"{paths.short_hash(target_dir, slug)}.json"
-    paths.write_json_atomic(state_file, verdict, indent=2)
-    report_identity = json.dumps(verdict, sort_keys=True, separators=(",", ":"))
-    token = "tuicr-close-" + paths.short_hash(slug, report_identity)
-    prompt = (
-        f"tuicr close {token}: review session {slug} closed with "
-        f"verdict={verdict['verdict']} ({target_dir}); report={state_file}. "
-        "Follow the tuicr Close contract."
-    )
-    config = WatchConfig(repo=target_dir, session=slug, cli_session=cli_session)
-    session, pane = resolve_target(config)
-    deliverer = WakeDeliverer(config, session, pane, target_dir)
-    try:
-        if not deliverer.deliver_prompt(prompt, token, f"closed session {slug}"):
-            raise SkillError("could not deliver review-close wake")
-    finally:
-        deliverer.close()
+def report_path(target_dir: str, slug: str) -> Path:
+    """Close report location; the tuicr feedback MCP server reads the same path."""
+    return paths.state_dir("tuicr", "reviews", create=True) / f"{paths.short_hash(target_dir, slug)}.json"
 
 
 def launch(target_dir: str) -> int:
     """Open tuicr in a tmux window and block until it exits."""
     window_name = os.environ.get("TUICR_WINDOW_NAME", "tuicr")
     remote = os.environ.get("TUICR_REMOTE", "origin")
-    cli_session = resolve_cli_session()
-    watch_name = ""
 
     dirty = bool(git(target_dir, "status", "--porcelain").stdout.strip())
     revset = ""
@@ -283,8 +220,6 @@ def launch(target_dir: str) -> int:
     if already_reviewing(target_dir):
         log_warn(f"tuicr is already reviewing {target_dir} in another window")
         log_info("Switch to it with Ctrl-b + w (window list)")
-        review_slug = active_review_slug(target_dir)
-        watch_name = start_watch(target_dir, review_slug, cli_session)
         return 0
 
     log_info(f"Launching tuicr in a new tmux window ('{window_name}')")
@@ -322,16 +257,15 @@ def launch(target_dir: str) -> int:
 
     run(["tmux", "select-window", "-t", pane_id])
     review_slug = active_review_slug(target_dir)
-    watch_name = start_watch(target_dir, review_slug, cli_session)
+    report = report_path(target_dir, review_slug)
+    # A report from an earlier close of this session would read as closed.
+    report.unlink(missing_ok=True)
+    log_info(f"Review session: {review_slug}")
     log_info(f"tuicr is running in window '{window_name}' (pane {pane_id})")
     log_info("Waiting for tuicr to exit...")
-    try:
-        while pane_exists(pane_id):
-            time.sleep(0.2)
-        log_info("tuicr finished")
-    finally:
-        if watch_name:
-            stop_watch(watch_name)
+    while pane_exists(pane_id):
+        time.sleep(0.2)
+    log_info("tuicr finished")
 
     exit_code = None
     try:
@@ -343,9 +277,8 @@ def launch(target_dir: str) -> int:
         Path(completion_file).unlink(missing_ok=True)
 
     verdict = review_verdict(target_dir, review_slug, head_before, exit_code)
-    wake_closed_review(target_dir, verdict["session"], cli_session, verdict)
-
-    log_info("If you exported instructions, they are in your clipboard - paste them here")
+    paths.write_json_atomic(report, verdict, indent=2)
+    log_info(f"verdict={verdict['verdict']}; report={report}")
     return 0
 
 

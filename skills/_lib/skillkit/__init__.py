@@ -12,9 +12,12 @@ Target platforms: Linux, macOS and WSL. The rules that keep that true:
   Those tools differ between GNU and BSD userland and are the single largest
   source of macOS breakage.
 * Never rely on a shell to split, quote or glob. Argument vectors are lists.
-* ``tmux`` is an assumed hard dependency (the wake transport needs it); it has
-  no native Windows port, so native Windows is out of scope by design. WSL is
-  the supported path there.
+* ``tmux`` is assumed as the review-window launcher; it has no native Windows
+  port, so native Windows is out of scope by design. WSL is the supported path
+  there.
+* Everything is stdlib-only except :mod:`~skillkit.feedback` (and its
+  conformance suite), which needs ``mcp`` pinned in ``_lib/pyproject.toml``;
+  run it with ``uv run --project skills/_lib``.
 
 Import from an entry point with :func:`skillkit.bootstrap.ensure_path`, or rely
 on the ``_lib`` directory already being on ``sys.path``.
@@ -26,7 +29,7 @@ them and they cost nothing beyond interpreter startup. The remaining modules are
 imported by path (``from skillkit.tuicrio import ...``) for one of two reasons:
 they bind to a specific external tool and so are only meaningful to a script
 that already depends on it (:mod:`~skillkit.tuicrio`, :mod:`~skillkit.tmuxio`,
-:mod:`~skillkit.gitio`, :mod:`~skillkit.copilot`), or they carry a measurable
+:mod:`~skillkit.gitio`, :mod:`~skillkit.feedback`), or they carry a measurable
 import cost (:mod:`~skillkit.paths` pulls in ``hashlib`` + ``json`` for ~7 ms).
 Partially re-exporting a module is the one thing to avoid — it makes
 ``from skillkit import SkillError`` work and ``from skillkit import UsageError``

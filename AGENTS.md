@@ -5,6 +5,7 @@
 - Prefer executable code over prose when defining repeatable processes. Use prose to explain intent, interfaces, and constraints that code cannot express; keep it concise. Each skill must be a standalone capability and must not depend on another skill's files or implementation.
 - Use custom agents to compose skills into constrained workflows. Keep workflow orchestration and cross-capability policy out of individual skills.
 - Keep guardrails and process restrictions to the minimum required for safety and correctness. Otherwise, preserve agent flexibility and rely on best judgment.
+- Maintain the source-controlled system megadrawing in `docs/INFRASTRUCTURE.md` whenever infrastructure changes. Keep skills, MCP servers, custom agents, their relationships, and policy-enforcement boundaries current in the same change; distinguish implemented behavior from proposals and prose contracts from executable checks.
 
 ## Release workflow
 

@@ -138,8 +138,8 @@ too. State in the database survives compaction; state in your context does not.
 
 All work — from a loop or from your own hands — is presented **unstaged** for
 human review. Open the review surface proactively via the `tuicr` skill and say
-it is ready. Never commit unreviewed work, and never commit while a watch loop
-is live.
+it is ready. Never commit unreviewed work, never commit while a `tuicr-feedback` batch is
+unacknowledged, and never commit in response to a feedback event.
 
 Orient the human before the diff: behavioral changes, complexity added or
 removed, the consequential tradeoff and evidence against the agreed acceptance
@@ -158,7 +158,7 @@ for repository resolution, duplicate search, draft persistence, metadata
 validation, and the final GitHub MCP call. Use `writer` only to tighten the
 human-facing prose; do not duplicate its documentation rules here.
 
-Issue creation is blocked until the exact Markdown draft is human-marked reviewed in `tuicr`. Preserve the local review repo and session across draft revisions so unchanged marks survive. A wake event may only handle local comments and draft edits; never create an issue from a wake event. Only act on an approved close report for the exact draft, target repo, and unchanged HEAD.
+Issue creation is blocked until the exact Markdown draft is human-marked reviewed in `tuicr`. Preserve the local review repo and session across draft revisions so unchanged marks survive. A feedback event may only handle local comments and draft edits; never create an issue from a feedback event. Only act on an approved close report for the exact draft, target repo, and unchanged HEAD.
 
 Read the human identity for `Identified by` and `Approved by` from real email
 addresses. When you need the approver address yourself, read `git config
@@ -171,11 +171,13 @@ cross-skill review gate and the decision to proceed.
 
 ## 6. Commit and push
 
-An `approved` tuicr close report is explicit human approval. Act on it
+An `approved` tuicr close report is explicit human approval. It arrives as the
+`tuicr-feedback` `closure` event; closure alone is not approval. Act on it
 immediately:
 
-1. Read the report and require a clean exit, unchanged `HEAD`, no unanswered
-   comments, and every reported file reviewed at current content.
+1. Read the report at the event's `closure.report` path and require a clean
+   exit, unchanged `HEAD`, no unanswered comments, and every reported file
+   reviewed at current content.
 2. Require an empty index, then stage exactly the paths in `marks.files`.
    Refuse unrelated staged paths, paths not named by the report, or any change
    since the report. Never use `git add -A`, `git add .`, or another broad

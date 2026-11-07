@@ -1,7 +1,7 @@
 # `presentation/lib`
 
-Python 3.11+, standard library only. Shared primitives come from
-[`../../_lib/skillkit`](../../_lib/README.md).
+Python 3.11+, standard library only, except `feedback_server.py`. Shared
+primitives come from [`../../_lib/skillkit`](../../_lib/README.md).
 
 ## `presentation.py <command> <doc.md> …`
 
@@ -24,6 +24,16 @@ State lives in `$XDG_STATE_HOME/demystify/<hash-of-doc-path>/`:
 closed flag) and `server.log`.
 The legacy directory name preserves conversations from before the skill split.
 Session closure signals the end of discussion, never workflow approval.
+
+## `feedback_server.py`
+
+Stdio MCP server `presentation-feedback`, run from the plugin's `mcp.json` via
+`uv run --project skills/_lib` (needs `mcp`). Adds `connect_review(doc)` —
+requires a running `presentation.py open <doc>` — to the common tools from
+[`skillkit.feedback`](../../_lib/README.md#review-feedback-contract), using the
+server's local `/agent/*` routes. `reply` answers the thread's current human
+tail. While `wait_for_feedback` blocks, the viewer shows the agent as waiting.
+Closure is the session's closed flag; it never implies approval.
 
 ## `server.py`
 

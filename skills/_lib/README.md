@@ -25,11 +25,10 @@ splitting cannot go wrong.
 
 ### Scope: Linux, macOS, WSL
 
-`tmux` is an assumed hard dependency — it is the transport that carries a wake
-into a running Copilot CLI pane. It has no native Windows port, so **native
-Windows is out of scope by design**; WSL is the supported path there. Nothing
-else in this package is POSIX-bound, so if that dependency ever changes, the
-remaining surface is already portable.
+`tmux` is assumed as the review-window launcher. It has no native Windows
+port, so **native Windows is out of scope by design**; WSL is the supported
+path there. Nothing else in this package is POSIX-bound, so if that dependency
+ever changes, the remaining surface is already portable.
 
 ## Importing
 
@@ -53,12 +52,27 @@ Set `SKILLS_ROOT` to override the location when a skill is vendored elsewhere.
 | `paths` | XDG dirs, local scratch paths, `short_hash()`, atomic writes, tolerant JSON reads |
 | `tmuxio` | Panes, windows, buffers, hex key delivery, focus reporting |
 | `tuicrio` | Typed `tuicr` client: `Anchor`, `Comment`, `reply_to()` |
-| `copilot` | CLI session state, pane binding, `events.jsonl` acceptance oracle |
 | `gitio` | Typed `git` wrapper, incl. `default_remote_branch()` |
 | `lock` | `PidFile` singleton guard, compatible with the shell pidfile format |
 | `errors` | `SkillError` and friends, each carrying its process exit code |
 | `approval` | Provider-neutral `agents.approval/v1` receipts and current workspace/file verification |
+| `feedback` | Shared review-feedback MCP contract (needs `mcp`; see below) |
+| `feedback_conformance` | Conformance suite every feedback connector must pass |
 
+## Review-feedback contract
+
+`feedback.py` is the one contract behind every skill-owned review MCP server
+(`tuicr-feedback`, `presentation-feedback`): wire models, a durable SQLite
+inbox, and the common tools `read_review`, `receive_feedback`,
+`acknowledge_feedback`, `reply` and `wait_for_feedback`. A skill adds only its
+`connect_review` tool and a `Connector`. One outstanding batch per review
+replays until acknowledged; reads and replies never acknowledge; closure never
+implies approval.
+
+`feedback_conformance.py` is a test mixin every connector must pass against its
+real frontend. These two modules need `mcp`, pinned in `pyproject.toml`; run
+them with `uv run --project skills/_lib`. The rest of `skillkit` stays
+stdlib-only.
 ## Design contracts worth knowing
 
 **Exit codes are part of the API.** The shell scripts signalled failure with
@@ -76,22 +90,13 @@ a case the hand-rolled shell emitters got wrong.
 attaches to a comment only when `(path, start_line, end_line, side)` match
 *exactly*. Omitting `--end-line` does not mean "unset" — it silently files the
 reply at `start_line..start_line`, which on a multi-line comment is a different
-anchor, so the reply neither threads nor marks the comment answered, and a
-watcher re-delivers it until its attempt budget is spent.
+anchor, so the reply neither threads nor marks the comment answered, and the
+comment stays pending.
 
 `tuicrio.reply_to()` takes the **parent `Comment`** and copies its `Anchor`
 rather than accepting loose line numbers. That makes the most common
 mis-anchoring bug *unrepresentable* rather than merely documented.
 
 **A tuicr failure is not "no comments".** `tuicrio.comments()` raises rather
-than returning `[]` on a transport failure. Conflating the two would leave a
-watcher reporting healthy while silently ignoring the human forever.
-
-**Acceptance is proven from persisted events, never from the screen.**
-`copilot.events_contain()` scans `events.jsonl` from a byte offset. Terminal
-rendering (`tmuxio.capture`) is only ever a diagnostic.
-
-**Pane binding is re-checked before every injection.** If the agent exits and a
-shell reclaims the pane, pasting a prompt and pressing Enter would execute it as
-a shell command. `copilot.pane_still_bound()` is a safety check, not an
-optimisation, and an ambiguous match is always an error — never a guess.
+than returning `[]` on a transport failure. Conflating the two would report
+healthy while silently ignoring the human forever.

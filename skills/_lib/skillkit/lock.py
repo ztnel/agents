@@ -1,7 +1,7 @@
 """Single-instance pidfile locking.
 
-A watcher must be a singleton per watched session: two daemons on one session
-would double-wake the agent. The shell version wrote ``$$`` to a file and
+A daemon that must be a singleton guards itself with a pidfile: two instances
+would duplicate their side effects. The shell version wrote ``$$`` to a file and
 checked it with ``kill -0``; this keeps that on-disk format — a bare PID — so a
 Python daemon and any remaining shell tooling can read each other's locks.
 """
@@ -57,7 +57,7 @@ class PidFile:
             raise SkillError(
                 f"another process (PID {existing}) already holds {self.path.name}.",
                 code=8,
-                hint="Stop it first, or use the watch-up helper which reuses a live daemon.",
+                hint="Stop it first, or reuse the running process.",
             )
         self.path.write_text(f"{os.getpid()}\n", encoding="utf-8")
         self._held = True

@@ -6,8 +6,8 @@ The developer agent composes the ``github-issue`` skill with ``writer``,
 pins the composition and gating rules that only the orchestrating agent can
 own: issue creation is blocked until the exact draft markdown is human-marked
 reviewed, authorship uses concrete model IDs and the human's real
-``git config user.email``, the local review repo/session persists, a wake
-event alone never creates an issue, and only an approved close report
+``git config user.email``, the local review repo/session persists, a
+feedback event alone never creates an issue, and only an approved close report
 authorizes the call.
 """
 
@@ -53,10 +53,10 @@ class DeveloperIssueContractTest(unittest.TestCase):
             re.compile(r"(preserve|persist)[^.\n]{0,40}(local )?review (repo|session)", re.IGNORECASE),
         )
 
-    def test_never_creates_an_issue_from_a_wake_event(self) -> None:
+    def test_never_creates_an_issue_from_a_feedback_event(self) -> None:
         self.assertRegex(
             self.text,
-            re.compile(r"never\s+create\s+an?\s+issue\s+from\s+a\s+wake\s+event", re.IGNORECASE),
+            re.compile(r"never\s+create\s+an?\s+issue\s+from\s+a\s+feedback\s+event", re.IGNORECASE),
         )
 
     def test_acts_only_on_an_approved_close_report(self) -> None:

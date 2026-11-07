@@ -136,8 +136,8 @@ undeterminable or worktree unsafe to remove.
 ## Related tooling
 
 These live in real skills and are called from there, not duplicated here:
-`tuicr/lib/tuicr_up.py` and `watch_up.py` for the review surface and its watch
-daemon, `git-worktree/` for worktree lifecycle, and `git-commit/commit.py` for
+`tuicr/lib/tuicr_up.py` and `feedback_server.py` for the review surface and its
+MCP feedback loop, `git-worktree/` for worktree lifecycle, and `git-commit/commit.py` for
 provenance-stamped commits.
 
 ## Testing

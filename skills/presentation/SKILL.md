@@ -27,7 +27,8 @@ Run this loop until the session is closed.
    ```bash
    lib/presentation.py open <doc.md>
    ```
-3. **Wait** for comments, passing your concrete model id (shown to the human):
+3. **Wait** for comments, passing your concrete model id (shown to the human).
+   Prefer the MCP loop below; this CLI is the fallback:
    ```bash
    lib/presentation.py wait <doc.md> --model <model-id> --timeout 300
    ```
@@ -44,6 +45,16 @@ Run this loop until the session is closed.
    `` `code` ``, lists, fenced code and `$…$`/`$$…$$` math. Reply before editing so the
    human sees the answer, then say in the reply what you changed.
 5. Go to 3.
+
+**MCP loop (preferred).** After `open`, call `connect_review(doc)` on the
+`presentation-feedback` MCP server, then loop on
+`wait_for_feedback(review_id, author=<model-id>)`. Each batch holds ordered
+events: answer each non-`superseded` `message` with
+`reply(review_id, message_id, message_version, content, author)` (it answers
+the thread's current tail), skip `withdrawn`, and stop on `closure` — closure is
+not approval. Then `acknowledge_feedback(review_id, batch_id)`; an
+unacknowledged batch replays, also after a server restart, so never duplicate a
+reply. Revise the document as in step 4.
 
 The green dot means an agent is blocked in `wait`; amber means it replied or
 stopped waiting in the last 10 minutes. Waiting keeps your turn busy, so stay
