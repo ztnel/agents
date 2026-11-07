@@ -1,8 +1,10 @@
 """tmux control: panes, windows, buffers and synthetic key delivery.
 
-tmux is an assumed hard dependency — it is the transport that carries a wake
-into a running Copilot CLI pane, and it has no native Windows port, which is
-what scopes these skills to Linux, macOS and WSL.
+Two consumers. The ``tmux`` skill uses the pane-management primitives to open,
+inspect and close explicitly targeted panes; application skills must not drive
+terminals themselves. The tuicr watcher uses the buffer and key primitives as
+the transport that carries a wake into a running Copilot CLI pane. tmux has no
+native Windows port, which is what scopes these skills to Linux, macOS and WSL.
 
 The delicate part is delivering a prompt to an interactive TUI. Typing it with
 ``send-keys`` is wrong: the CLI's input box interprets keystrokes, so long text
@@ -18,7 +20,7 @@ import re
 from dataclasses import dataclass
 
 from .errors import MissingDependency, SkillError
-from .proc import require, run
+from .proc import require, run, which
 
 #: ``ESC [ I`` — terminal focus-in report. With ``focus-events`` enabled the CLI
 #: ignores synthetic submits while it believes its window is unfocused, so this
@@ -44,8 +46,6 @@ class Pane:
 
 def available() -> bool:
     """Whether a tmux binary is on PATH."""
-    from .proc import which
-
     return which("tmux") is not None
 
 
@@ -210,3 +210,170 @@ def rename_window(target: str, name: str) -> bool:
 def rename_session(target: str, name: str) -> bool:
     """Rename session *target* to *name*."""
     return run(["tmux", "rename-session", "-t", target, name]).ok
+
+
+# --- Pane management ---------------------------------------------------------
+
+#: Exact pane IDs (``%12``). Mutating helpers accept nothing looser, so a stale
+#: window name or index can never resolve to an unrelated pane.
+PANE_ID_RE = re.compile(r"^%[0-9]+$")
+
+_PANE_FIELDS = (
+    ("pane_id", "#{pane_id}"),
+    ("window_id", "#{window_id}"),
+    ("session_id", "#{session_id}"),
+    ("session_name", "#{session_name}"),
+    ("window_index", "#{window_index}"),
+    ("window_name", "#{window_name}"),
+    ("pane_index", "#{pane_index}"),
+    ("pane_pid", "#{pane_pid}"),
+    ("pane_active", "#{pane_active}"),
+    ("window_active", "#{window_active}"),
+    ("pane_width", "#{pane_width}"),
+    ("pane_height", "#{pane_height}"),
+    ("pane_current_command", "#{pane_current_command}"),
+    ("pane_current_path", "#{pane_current_path}"),
+)
+_PANE_FORMAT = "\t".join(fmt for _, fmt in _PANE_FIELDS)
+_INT_FIELDS = {"window_index", "pane_index", "pane_pid", "pane_width", "pane_height"}
+_BOOL_FIELDS = {"pane_active", "window_active"}
+
+
+def require_pane_id(pane: str) -> str:
+    """Return *pane* if it is an exact pane ID, else raise (exit 2)."""
+    if not PANE_ID_RE.match(pane or ""):
+        raise SkillError(f"expected an exact pane id like %12, got {pane!r}", code=2)
+    return pane
+
+
+def _parse_pane(line: str) -> dict | None:
+    values = line.split("\t")
+    if len(values) != len(_PANE_FIELDS):
+        return None
+    pane: dict = {}
+    for (key, _), value in zip(_PANE_FIELDS, values):
+        if key in _INT_FIELDS:
+            pane[key] = int(value) if value.isdigit() else None
+        elif key in _BOOL_FIELDS:
+            pane[key] = value == "1"
+        else:
+            pane[key] = value
+    return pane
+
+
+def describe_panes(target: str | None = None, *, scope: str = "all") -> list[dict]:
+    """Structured description of panes.
+
+    Args:
+        target: Session, window or pane the *scope* is relative to.
+        scope: ``all`` for every pane on the server, ``session`` for the
+            target's session, ``window`` for the target's window.
+
+    Raises:
+        SkillError: If tmux cannot list panes (exit 4: no server or bad target).
+    """
+    args = ["tmux", "list-panes", "-F", _PANE_FORMAT]
+    if scope == "all":
+        args.insert(2, "-a")
+    else:
+        if scope == "session":
+            args.insert(2, "-s")
+        if target:
+            args[2:2] = ["-t", target]
+    result = run(args)
+    if not result.ok:
+        raise SkillError(f"tmux list-panes failed: {result.stderr or 'no tmux server'}", code=4)
+    return [pane for pane in map(_parse_pane, result.lines()) if pane]
+
+
+def describe_pane(pane: str) -> dict | None:
+    """Description of one exact pane, or None if it no longer exists."""
+    result = run(["tmux", "display-message", "-p", "-t", require_pane_id(pane), _PANE_FORMAT])
+    if not result.ok:
+        return None
+    described = _parse_pane(result.stdout)
+    return described if described and described["pane_id"] == pane else None
+
+
+def open_pane(
+    command: str,
+    *,
+    cwd: str,
+    target: str | None = None,
+    window_name: str | None = None,
+    split: str | None = None,
+    size: str | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
+    """Start *command* in a new detached pane and return its pane ID.
+
+    A new window is created unless *split* (``h`` or ``v``) is given, in which
+    case *target* (an exact pane ID) is split. Nothing receives focus, and no
+    session, server or global option is changed. Environment values are passed
+    as literal ``-e`` arguments, never interpolated into *command*.
+
+    Raises:
+        SkillError: If tmux refuses (exit 4).
+    """
+    if split:
+        if split not in ("h", "v"):
+            raise SkillError(f"split must be 'h' or 'v', got {split!r}", code=2)
+        args = ["tmux", "split-window", "-d", f"-{split}", "-t", require_pane_id(target or "")]
+        if size:
+            args += ["-l", size]
+    else:
+        args = ["tmux", "new-window", "-d"]
+        if target:
+            # A trailing colon targets the session, so tmux picks a free index.
+            args += ["-t", f"{target}:" if not target.endswith(":") else target]
+        if window_name:
+            args += ["-n", window_name]
+    args += ["-P", "-F", "#{pane_id}", "-c", cwd]
+    for name, value in (env or {}).items():
+        args += ["-e", f"{name}={value}"]
+    created = run([*args, command])
+    pane = created.stdout.strip()
+    if not created.ok or not PANE_ID_RE.match(pane):
+        raise SkillError(f"tmux could not open a pane: {created.stderr or pane}", code=4)
+    return pane
+
+
+def focus_pane(pane: str) -> None:
+    """Make *pane* the active pane of its window and its window current."""
+    require_pane_id(pane)
+    for args in (["tmux", "select-window", "-t", pane], ["tmux", "select-pane", "-t", pane]):
+        result = run(args)
+        if not result.ok:
+            raise SkillError(f"tmux could not focus {pane}: {result.stderr}", code=4)
+
+
+def resize_pane(pane: str, *, width: str | None = None, height: str | None = None) -> None:
+    """Resize *pane* to *width* columns and/or *height* rows (``N`` or ``N%``)."""
+    args = ["tmux", "resize-pane", "-t", require_pane_id(pane)]
+    if width:
+        args += ["-x", width]
+    if height:
+        args += ["-y", height]
+    if not (width or height):
+        raise SkillError("resize needs a width or height", code=2)
+    result = run(args)
+    if not result.ok:
+        raise SkillError(f"tmux could not resize {pane}: {result.stderr}", code=4)
+
+
+def close_pane(pane: str) -> None:
+    """Kill exactly *pane*; its window closes only if it was the last pane."""
+    result = run(["tmux", "kill-pane", "-t", require_pane_id(pane)])
+    if not result.ok:
+        raise SkillError(f"tmux could not close {pane}: {result.stderr}", code=4)
+
+
+def capture_lines(pane: str, lines: int | None = None) -> str:
+    """Visible text of *pane*, optionally including *lines* of scrollback."""
+    args = ["tmux", "capture-pane", "-p", "-t", require_pane_id(pane)]
+    if lines:
+        args += ["-S", f"-{lines}"]
+    result = run(args)
+    if not result.ok:
+        raise SkillError(f"tmux could not capture {pane}: {result.stderr}", code=4)
+    return result.stdout

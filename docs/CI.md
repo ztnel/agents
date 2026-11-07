@@ -6,10 +6,11 @@ Workflow permissions are limited to `contents: read`.
 
 ## Regression
 
-The `regression` job uses Python 3.14 and runs [`tests/run_ci.py`](../tests/run_ci.py):
+The `regression` job installs tmux, uses Python 3.14, and runs [`tests/run_ci.py`](../tests/run_ci.py):
 
 - Compile Python sources and validate the workflow, plugin, and MCP manifests.
-- Run every Python `test_*.py` and the tuicr shell suites.
+- Run every Python `test_*.py` and the tuicr shell suites. The `tmux` skill
+  tests drive a private tmux server and skip when tmux is not installed.
 - Lint all skills, with strict linting for `github-issue`.
 - Check whitespace errors with `git diff --check`.
 

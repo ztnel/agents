@@ -12,9 +12,10 @@ Target platforms: Linux, macOS and WSL. The rules that keep that true:
   Those tools differ between GNU and BSD userland and are the single largest
   source of macOS breakage.
 * Never rely on a shell to split, quote or glob. Argument vectors are lists.
-* ``tmux`` is an assumed hard dependency (the wake transport needs it); it has
-  no native Windows port, so native Windows is out of scope by design. WSL is
-  the supported path there.
+* ``tmux`` carries the tuicr wake and backs the ``tmux`` skill's pane
+  management; application skills must not require it. It has no native
+  Windows port, so native Windows is out of scope by design. WSL is the
+  supported path there.
 
 Import from an entry point with :func:`skillkit.bootstrap.ensure_path`, or rely
 on the ``_lib`` directory already being on ``sys.path``.

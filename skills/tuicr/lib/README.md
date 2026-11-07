@@ -59,21 +59,21 @@ persisted tuicr session files for recovery.
 Exits non-zero with a message naming the valid subcommands when one is omitted,
 and lists the available comment ids when `--to` names an unknown one.
 
-### `tuicr_up.py [directory]`
+### `tuicr_up.py [--cli-session UUID] [directory]`
 
-Launches tuicr in a new tmux window over a freshly-resolved revset, starts the
-watch daemon for the current Copilot CLI session, focuses the review window,
-and blocks until tuicr exits. It then stops the comment watcher, evaluates
-review marks against the unchanged `HEAD`, checks explicitly registered
-questions to the human, persists a JSON verdict under the tuicr XDG state
-directory, and wakes the originating agent with the report path. A killed or
-failed window is always `aborted`.
-The launcher leaves tuicr attached to the pane's terminal, so `e` can open a
-terminal editor such as Neovim. Exported instructions use tuicr's clipboard
-path rather than `--stdout` capture.
-New windows receive the caller's `EDITOR` and `VISUAL` when set, without
-changing tmux's global environment. Unset variables retain tmux defaults;
-existing review windows are not modified.
+Runs tuicr in the foreground of the current terminal over a freshly-resolved
+revset, starts the watch daemon for `--cli-session`, and blocks until tuicr
+exits. It then stops the comment watcher, evaluates review marks against the
+unchanged `HEAD`, checks explicitly registered questions to the human, persists
+a JSON verdict under the tuicr XDG state directory, and wakes that session with
+the report path. A killed or failed tuicr is always `aborted`.
+
+It opens no terminals: the invoking workflow chooses where it runs. tuicr
+inherits the terminal, so `e` can open the editor named by that terminal's
+`EDITOR`/`VISUAL`. Exported instructions use tuicr's clipboard path rather than
+`--stdout` capture. Without `--cli-session`, no watcher starts and no wake is
+sent; the close report is still written. A failed wake is a warning that names
+the report path, not a failed review.
 
 Reviewed regular files carry `content_sha256` fingerprints in `marks.files`.
 Consumers verify their own inputs against those fingerprints before acting.
@@ -98,20 +98,19 @@ skill-owned state under `XDG_STATE_HOME/tuicr/questions`, keyed by checkout
 and session; persisted tuicr sessions and human marks are never modified.
 Registered questions are excluded from agent wake work, not from review.
 
-Configured by environment, not flags: `TUICR_WINDOW_NAME` (default `tuicr`),
-`TUICR_BASE_REF` (default: **the remote's own default branch**, never a
+Configured by environment: `TUICR_BASE_REF` (default: **the remote's own default branch**, never a
 hardcoded name), `TUICR_HEAD_REF` (default `HEAD`), `TUICR_REMOTE` (default
 `origin`).
 
-If tuicr is already reviewing that checkout, the launcher reuses the active
-review session and still starts the watcher instead of opening another window.
+If the launcher is already reviewing that checkout (a per-checkout pidfile under
+`XDG_STATE_HOME/tuicr/running`), it exits 0 and only starts the watcher for the
+active session instead of running a second tuicr.
 Persisted sessions are reused across review cycles so unchanged human review
 marks survive. tuicr owns mark invalidation when file content changes; callers
 must not move, replace, delete, or edit session files to force a refresh.
 
-Refuses (exit 1) when tuicr is missing, the target is not a git repo, or it is
-not running inside tmux. Exits 0 without acting if a tuicr pane is already open
-on that same checkout — scoped per-checkout so two repositories can be reviewed
+Refuses (exit 1) when tuicr is missing or the target is not a git repo. The
+running-review check is scoped per checkout so two repositories can be reviewed
 at once.
 
 ### `refresh_review_refs.py [--repo D] [--base R] [--head R] [--remote R] [--no-ff]`

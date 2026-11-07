@@ -137,6 +137,21 @@ human review. Open the review surface proactively via the `tuicr` skill and say
 it is ready. Never commit unreviewed work, and never commit while a watch loop
 is live.
 
+### Where the review runs
+
+`tuicr` says what to run; the `tmux` skill decides where. Run `tuicr_up.py`
+with your full session ID as `--cli-session`, never in your own tool shell:
+
+- Check `tmux_pane.py status`. If tmux is available and you are inside it,
+  `open` a window in the repository with `--env EDITOR --env VISUAL --expect
+  tuicr --focus` and record the returned `pane_id`.
+- Otherwise, or if `open` fails, give the human the exact `tuicr_up.py` command
+  to run in their own terminal, then wait. tmux is never required; a missing
+  wake is not a failed review, and the close report path is deterministic.
+- If a session is already active, reuse it rather than opening another.
+
+Close only panes you opened, by `pane_id`, and only after the review closes.
+
 Orient the human before the diff: behavioral changes, complexity added or
 removed, the consequential tradeoff and evidence against the agreed acceptance
 criteria. If the human cannot explain the design and its main failure modes,

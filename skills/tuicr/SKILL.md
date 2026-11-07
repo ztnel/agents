@@ -1,6 +1,6 @@
 ---
 name: tuicr
-description: "Read comments and human-owned review marks in tuicr code-review sessions, open review windows in tmux, and run a live feedback loop. Includes a daemon that wakes an agent when comments are pending or a review closes, plus contracts for answering every comment before acting and interpreting deterministic approval without setting marks. Use when opening a review for a human, reading or replying to review comments, checking review completion, starting or stopping a live watch, or when woken by a `tuicr wake` or `tuicr close` prompt."
+description: "Read comments and human-owned review marks in tuicr code-review sessions, run a review in any terminal, and run a live feedback loop. Includes a daemon that wakes an agent when comments are pending or a review closes, plus contracts for answering every comment before acting and interpreting deterministic approval without setting marks. Use when opening a review for a human, reading or replying to review comments, checking review completion, starting or stopping a live watch, or when woken by a `tuicr wake` or `tuicr close` prompt."
 ---
 
 # tuicr review workflow
@@ -12,9 +12,11 @@ when a comment is pending, so the human never has to copy anything out of the
 TUI.
 
 Scripts live in this skill's `lib/`. Resolve the dir as
-`~/.agents/skills/tuicr/lib`. They need `tuicr`, `git`, `tmux` and `python3`
-(3.8+, stdlib only), and run on Linux, macOS and WSL — `tmux` has no native
-Windows port, so on Windows use WSL. See [`lib/README.md`](lib/README.md) for
+`~/.agents/skills/tuicr/lib`. They need `tuicr`, `git` and `python3` (3.8+,
+stdlib only), and run on Linux, macOS and WSL. Only the watcher's wake
+transport needs `tmux`, which has no native Windows port, so on Windows use
+WSL. This skill does not open or manage terminals; the invoking workflow
+decides where the review runs. See [`lib/README.md`](lib/README.md) for
 each script's contract and exit codes.
 
 ## Non-negotiables
@@ -26,8 +28,8 @@ each script's contract and exit codes.
    substitute — the human triages in tuicr. See
    [Replying](#replying-to-existing-comments).
 2. **Open a review without being asked.** Whenever you produce changes a human
-   needs to review, proactively open a tuicr window on them and say it is ready.
-   The only exception is an explicit "no review window for this one".
+   needs to review, proactively start a tuicr review on them and say it is ready.
+   The only exception is an explicit "no review for this one".
 3. **Refresh branch refs first.** Before opening any branch-based review, fetch
    and resolve against fresh remote refs via
    [`lib/refresh_review_refs.py`](#opening-a-review). Never review a stale local
@@ -50,7 +52,7 @@ comments. You open or find the session and read their comments; you do not
 review your own patch or write comments in their voice.
 
 **B — Agent review of a patch** (any "code review this", "review with model X
-and Y" request). Spawn a window for the target revset and post every finding as
+and Y" request). Start a review for the target revset and post every finding as
 an inline comment — anchored in tuicr, not printed to chat. Run reviewer
 sub-agents in parallel when several models are named, verify each finding
 against the real source before posting (models fabricate line numbers and
@@ -76,24 +78,24 @@ dirty or diverged one. Pass `--no-ff` to review the local `HEAD` as-is instead
 of moving it. If a commit in the range is already merged into the base, use
 `<first>^..<last>` so the diff is non-empty.
 
-Then check for an existing session and open a window if there is none:
+Then check for an existing session and start a review if there is none:
 
 ```bash
 tuicr review list --repo <repo>                       # look for "active": true
-~/.agents/skills/tuicr/lib/tuicr_up.py <repo>         # working-tree review window
+~/.agents/skills/tuicr/lib/tuicr_up.py --cli-session <your session id> <repo>
 ```
 
-`tuicr_up.py` refreshes refs, opens a tmux window, and starts the review
-watch daemon for the current Copilot CLI session; if tuicr is already
-reviewing **that same checkout**, it reuses the active session and still starts
-the watcher. For full control, open directly: `tmux new-window -d -n review
--c <repo> "tuicr -w"` (uncommitted changes) or `"tuicr -r '<revset>'"` (a
-commit range). Requires `$TMUX`; if there is no multiplexer, tell the human
-you are waiting for them to start `tuicr`, then attach via `tuicr review
-list`.
+`tuicr_up.py` runs tuicr **in the terminal it is started in** and blocks until
+the human quits. It refreshes refs, starts the review watch daemon for the
+given Copilot CLI session, and on exit persists the close report and wakes that
+session. Run it somewhere the human can see, never in your own tool shell: the
+invoking workflow opens a terminal for it, or asks the human to run it in one of
+theirs. Pass `--cli-session` explicitly; without it the review and close report
+still work, but nothing watches or wakes you. If the launcher is already
+reviewing **that same checkout**, it exits 0 and only (re)starts the watcher.
 
-The CLI works outside tmux, so never require a multiplexer just to read an
-existing session.
+The `tuicr review` CLI works in any terminal, so never require a particular
+terminal just to read an existing session.
 
 For agent-authored changes, post one concise review-level description after the
 session is available:
@@ -248,7 +250,7 @@ deterministic result.
 - `incomplete` means the review closed cleanly but one or more checks failed.
   Report the exact `reasons` and unreviewed/absent/stale files. Also mention
   unanswered registered questions when present; those block approval.
-- `aborted` means the window was killed, crashed, or otherwise did not record a
+- `aborted` means tuicr was killed, crashed, or otherwise did not record a
   clean exit. It is never approval.
 
 Review marks are human-owned. Read and verify them; never create, change, or
@@ -425,8 +427,7 @@ unchanged ones. `--input` accepts literal JSON, `@file.json`, or `-` for stdin.
 | Situation | Action |
 |-----------|--------|
 | Multiple plausible active sessions | Ask which slug to use |
-| No active session, tmux available | Open one with `tuicr_up.py` |
-| No active session, no multiplexer | Say you are waiting for the human to start `tuicr` |
+| No active session | Start `tuicr_up.py` where the human can see it, or give them the exact command |
 | `tuicr` not installed | Tell the human to install it |
 | Comments empty | Confirm the session, or ask them to save comments |
 | Base/head may be stale | Run `refresh_review_refs.py`; use `REVIEW_REVSET` |
