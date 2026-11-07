@@ -80,7 +80,7 @@ failures — use it for new skills, where there is no legacy to excuse.
 ~/.agents/skills/skill-writer/lib/skill_new.py <skill-name>
 ```
 
-Creates a compliant skeleton — `SKILL.md`, a `README.md` stub and an empty `lib/` — then
+Creates a compliant skeleton — `SKILL.md` and an empty `lib/` — then
 lints it. The rendered description is a placeholder that fails `--strict` by design; an
 unedited skeleton must never ship.
 
@@ -90,9 +90,8 @@ unedited skeleton must never ship.
 4. Write `lib/<entry>.py` in Python, with a `#!/usr/bin/env python3` shebang, the
    executable bit and the `_lib/skillkit` bootstrap → verify: no shell-script, shebang,
    exec-bit or bootstrap warning
-5. Fill `README.md` → verify: no README warning
-6. Gate: `skill-lint.py <dir> --strict` exits 0
-7. Prove it loads (see *Prove it loads*)
+5. Gate: `skill-lint.py <dir> --strict` exits 0
+6. Prove it loads (see *Prove it loads*)
 
 ## Workflow: validate
 
@@ -205,10 +204,13 @@ a recommendation; this team uses:
 _lib/skillkit/      # shared package: portable primitives (not a skill, has no SKILL.md)
 <skill>/
 ├── SKILL.md        # required
-├── README.md       # Every source folder documents its public API
 ├── lib/            # executable Python entry points and modules — no shell
 └── templates/      # output templates
 ```
+
+`SKILL.md` is readable by humans and agents. Document the capability there;
+do not require or scaffold a duplicate README. Add reference files only when
+they provide distinct information.
 
 Python is the only source language (see *Python only*). Shared behaviour belongs in
 `_lib/skillkit`, never copied between skills.

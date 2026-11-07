@@ -26,8 +26,8 @@ def usage() -> None:
     default_root = Path(__file__).resolve().parents[2]
     print(f"""Usage: skill_new.py <skill-name> [--root <dir>]
 
-Creates <root>/<skill-name>/ containing a spec-compliant SKILL.md, a README.md
-stub and an empty lib/, then validates it.
+Creates <root>/<skill-name>/ containing a spec-compliant SKILL.md and an empty
+lib/, then validates it.
 
   <skill-name>   lowercase a-z, 0-9 and single hyphens; no leading, trailing or
                  consecutive hyphens; max 64 characters
@@ -93,39 +93,6 @@ def parse_arguments(argv: Sequence[str]) -> tuple[str, Path]:
     return name, root
 
 
-def readme(name: str) -> str:
-    """Build the initial README stub for a new skill.
-
-    Args:
-        name: Valid new skill name.
-
-    Returns:
-        README Markdown content.
-    """
-    return f"""# `{name}`
-
-ONE_LINE_PURPOSE
-
-## Public API
-
-### `lib/<entry>.py`
-
-```bash
-~/.agents/skills/{name}/lib/<entry>.py <args>
-```
-
-Describe each entry point's arguments, exit codes and side effects.
-
-## Design
-
-Why this skill is structured the way it is, and what it deliberately does not do.
-
-## Dependencies
-
-`python3`, and the shared `~/.agents/skills/_lib/skillkit` package.
-"""
-
-
 def lint(destination: Path) -> None:
     """Run the existing linter as advisory output for a fresh skeleton.
 
@@ -180,7 +147,6 @@ def main(argv: Sequence[str]) -> int:
         template.read_text(encoding="utf-8").replace("SKILL_NAME", name),
         encoding="utf-8",
     )
-    (destination / "README.md").write_text(readme(name), encoding="utf-8")
     print(f"Created {destination}")
     print()
     lint(destination)

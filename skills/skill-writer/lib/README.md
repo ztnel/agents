@@ -2,8 +2,8 @@
 
 | Command | Contract | Exit codes |
 |---|---|---|
-| `skill-new.sh <skill-name> [--root dir]` | Validates the name, creates `SKILL.md`, `README.md`, and empty `lib/`, then runs the existing linter without overwriting a destination. | `2` usage/name, `1` destination/template failure. |
-| `skill-lint.py [targets…] [--strict] [--json] [--list-names]` | Existing read-only specification and convention linter. | See root `README.md`. |
+| `skill_new.py <skill-name> [--root dir]` | Validates the name, creates `SKILL.md` and empty `lib/`, then runs the existing linter without overwriting a destination. | `2` usage/name, `1` destination/template failure. |
+| `skill-lint.py [targets…] [--strict] [--json] [--list-names]` | Existing read-only specification and convention linter. | See `skill-lint.py --help`. |
 
 ## Design
 

@@ -1,4 +1,4 @@
-// Helpers available to every demystify widget as `dm`. Widgets run in an opaque-origin sandbox;
+// Helpers available to every presentation widget as `dm`. Widgets run in an opaque-origin sandbox;
 // they talk to the page only through these postMessage calls.
 (() => {
   const target = new URL(location.href).origin;

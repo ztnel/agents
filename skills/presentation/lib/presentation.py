@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""demystify — open an explainer page and converse with the human on it.
+"""presentation — open a document and converse with the human on it.
 
-    demystify.py open <doc.md> [--no-browser | --browser] [--restart]
-    demystify.py wait  <doc.md> --model M [--timeout 120]
-    demystify.py read  <doc.md>
-    demystify.py reply <doc.md> --model M --thread T (--body TEXT | --body-file F)
-    demystify.py ask   <doc.md> --model M (--line N [--end N] [--element L | --text T] | --document) --body TEXT
-    demystify.py close <doc.md>
-    demystify.py list
+    presentation.py open <doc.md> [--no-browser | --browser] [--restart]
+    presentation.py wait  <doc.md> --model M [--timeout 120]
+    presentation.py read  <doc.md>
+    presentation.py reply <doc.md> --model M --thread T (--body TEXT | --body-file F)
+    presentation.py ask   <doc.md> --model M (--line N [--end N] [--element L | --text T] | --document) --body TEXT
+    presentation.py close <doc.md>
+    presentation.py list
 
 Outputs JSON on stdout. ``open`` reuses a running server for the same document and opens a browser tab
 only when it starts a server; ``--browser`` reopens one.
@@ -35,6 +35,7 @@ from skillkit.errors import SkillError, UsageError  # noqa: E402
 
 import server  # noqa: E402
 
+# Preserve saved conversations and running sessions from before the skill split.
 STATE = ("demystify",)
 
 
@@ -68,8 +69,8 @@ def call(meta: dict, route: str, body: dict | None = None, timeout: float = 10) 
         detail = json.loads(exc.read() or b"{}").get("error", exc.reason)
         raise SkillError(f"server rejected {route}: {detail}") from None
     except (urllib.error.URLError, OSError) as exc:
-        raise SkillError(f"no demystify server for this document ({exc})",
-                         code=4, hint="run: demystify.py open <doc.md>") from None
+        raise SkillError(f"no presentation server for this document ({exc})",
+                         code=4, hint="run: presentation.py open <doc.md>") from None
 
 
 def healthy(meta: dict | None) -> bool:
@@ -85,7 +86,7 @@ def healthy(meta: dict | None) -> bool:
 def running(doc: Path) -> dict:
     meta = load(doc)
     if not healthy(meta):
-        raise SkillError(f"no demystify server for {doc}", code=4, hint="run: demystify.py open <doc.md>")
+        raise SkillError(f"no presentation server for {doc}", code=4, hint="run: presentation.py open <doc.md>")
     return meta
 
 
@@ -214,7 +215,7 @@ def cmd_list(_args) -> dict:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="demystify.py", description=__doc__.split("\n")[0])
+    p = argparse.ArgumentParser(prog="presentation.py", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
     for name in ("open", "serve", "wait", "read", "reply", "ask", "close"):
         s = sub.add_parser(name)

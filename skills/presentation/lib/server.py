@@ -1,6 +1,6 @@
-"""Loopback, token-protected HTTP server for one demystify session.
+"""Loopback, token-protected HTTP server for one presentation session.
 
-One process serves one Markdown explainer. The browser long-polls ``/api/state``
+One process serves one Markdown document. The browser long-polls ``/api/state``
 for document and conversation changes; agents long-poll ``/agent/wait`` for
 human comments. Conversations persist as JSON beside the session metadata, so
 reopening the same document resumes them.

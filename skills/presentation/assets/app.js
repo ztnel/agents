@@ -1,4 +1,4 @@
-// demystify client: read-only explainer with vim-style navigation and comments.
+// Presentation client: read-only document with vim-style navigation and comments.
 // Mode, pane and visual kind are explicit state, never inferred from focus or selection.
 
 const $ = (id) => document.getElementById(id);
@@ -70,7 +70,7 @@ async function poll() {
     } catch (exc) {
       reachable = false;
       showError(token ? "Server unreachable: the session ended. The page stays readable and :w still exports."
-        : "Missing session token: open the URL printed by demystify.py open.");
+        : "Missing session token: open the URL printed by presentation.py open.");
       renderStatus();
       await new Promise((resolve) => setTimeout(resolve, 3000));
     }
@@ -330,8 +330,8 @@ function apply(next) {
     if (searchTerm) runSearch(searchTerm);
     buildToc();
   }
-  document.title = next.title || "demystify";
-  $("title").textContent = next.title || "demystify";
+  document.title = next.title || "presentation";
+  $("title").textContent = next.title || "presentation";
   $("source").textContent = next.doc;
   showError(next.error);
   renderAgent();
@@ -931,7 +931,7 @@ let exporting = null;       // resolves when the print dialog has closed
 // the dialog seconds later. Both fire afterprint when it closes, so wait for that.
 function exportPdf() {
   if (exporting) return exporting;
-  document.title = state?.title || "demystify";
+  document.title = state?.title || "presentation";
   $("busy").hidden = false;
   say("rendering PDF…");
   exporting = new Promise((resolve) => {

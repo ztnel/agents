@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -26,6 +29,36 @@ class ScalarParsingTest(unittest.TestCase):
     def test_invalid_escape_is_rejected(self) -> None:
         with self.assertRaises(skill_lint.FrontmatterError):
             skill_lint._parse_scalar('"bad\\qescape"')
+
+
+class SkillDocumentationTest(unittest.TestCase):
+    def test_skill_without_readme_passes_strict_lint(self):
+        with tempfile.TemporaryDirectory() as root:
+            skill = Path(root) / "example"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text(
+                '---\nname: example\ndescription: "Use when checking an example."\n---\n'
+                '# Example\n\nA standalone capability.\n',
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(MODULE), str(skill), "--strict"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_scaffolder_does_not_generate_duplicate_readme(self):
+        with tempfile.TemporaryDirectory() as root:
+            result = subprocess.run(
+                [sys.executable, str(MODULE.with_name("skill_new.py")),
+                 "example", "--root", root],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(
+                {path.name for path in (Path(root) / "example").iterdir()},
+                {"SKILL.md", "lib"},
+            )
 
 
 if __name__ == "__main__":

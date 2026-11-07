@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rendering, sanitising and anchor-relocation contracts for demystify."""
+"""Rendering, sanitising and anchor-relocation contracts for presentation."""
 
 import sys
 import unittest

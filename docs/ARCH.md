@@ -36,6 +36,16 @@ correctness; otherwise preserve agent flexibility and judgment. Local review
 workflows keep human approval explicit, with staging, commits, and remote
 publication outside the tuicr watch loop.
 
+## Presentation and human alignment
+
+`presentation` owns local Markdown display, anchored comments, agent replies,
+live updates and PDF export. It is standalone and has no teaching, development
+or approval policy.
+
+Keep one design-heavy feature active; parallelize bounded execution within
+stable interfaces. Code review remains in `tuicr`, with orientation on behavior,
+complexity, tradeoffs and acceptance evidence before the diff.
+
 See [CI and validation](CI.md) for the checks covering these surfaces.
 
 ## Generic review approval

@@ -1,4 +1,4 @@
-"""Render the agent's Markdown explainer into navigable, commentable units.
+"""Render the agent's Markdown document into navigable, commentable units.
 
 Every source line the human can point at becomes one *unit*: a paragraph line,
 heading, list item, table row, quote line, code line, or a whole ``svg`` diagram.

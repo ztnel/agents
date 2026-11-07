@@ -1,9 +1,9 @@
-# `demystify/lib`
+# `presentation/lib`
 
 Python 3.11+, standard library only. Shared primitives come from
 [`../../_lib/skillkit`](../../_lib/README.md).
 
-## `demystify.py <command> <doc.md> …`
+## `presentation.py <command> <doc.md> …`
 
 Entry point. Prints JSON on stdout; errors use the `skillkit` format and exit
 codes (`2` usage, `4` no server for the document).
@@ -22,6 +22,8 @@ codes (`2` usage, `4` no server for the document).
 State lives in `$XDG_STATE_HOME/demystify/<hash-of-doc-path>/`:
 `session.json` (port, token, pid; mode 0600), `threads.json` (conversation and
 closed flag) and `server.log`.
+The legacy directory name preserves conversations from before the skill split.
+Session closure signals the end of discussion, never workflow approval.
 
 ## `server.py`
 

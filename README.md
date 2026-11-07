@@ -34,7 +34,7 @@ git clone --branch <version> --depth 1 https://github.com/ztnel/agents.git
 copilot --plugin-dir ./agents
 ```
 
-Copilot loads the skills, the custom agent under `com.github.copilot/`, and the
+Copilot loads the skills, the custom agents under `com.github.copilot/`, and the
 root GitHub MCP configuration.
 
 ## Documentation

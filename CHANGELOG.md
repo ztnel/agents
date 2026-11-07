@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - Unreleased
+
+### Changed
+- Skill authoring no longer requires or scaffolds duplicate READMEs; `SKILL.md` is the capability document. Removed the presentation README.
+- Split `demystify` into the standalone `presentation` skill and the `agents:demystifier` custom agent. Invoke `skills/presentation/lib/presentation.py`; the old skill and entry point are removed.
+- Presentation retains rendering, anchored comments, live updates, PDF export and saved conversations. Invoking agents own content and workflow policy; page closure is not approval.
+- The developer agent presents a brief outcome, requirements, constraints, non-goals, approach and acceptance criteria before implementation, requiring explicit agreement on the current brief.
+- Material design changes trigger reconsideration; parallel work stays within one design-heavy feature, and code review highlights behavior, complexity, tradeoffs and acceptance evidence.
+
 ## [0.4.1] - 2026-11-02
 
 ### Added

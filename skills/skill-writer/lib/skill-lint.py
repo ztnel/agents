@@ -385,9 +385,6 @@ def check_placeholders(text, rep):
 
 
 def check_layout(skill_dir, rep):
-    if not os.path.isfile(os.path.join(skill_dir, "README.md")):
-        rep.warn("no README.md (Convention: every source folder documents its API)")
-
     for root, dirs, files in os.walk(skill_dir):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
         rel_root = os.path.relpath(root, skill_dir)

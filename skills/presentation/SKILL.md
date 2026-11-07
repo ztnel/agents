@@ -1,32 +1,35 @@
 ---
-name: demystify
-description: "Explain a concept to the human as a live, read-only explainer page that mixes Markdown text with inline SVG diagrams and LaTeX math, then converse on it: the human comments on lines or diagram parts with Vim keys, the agent waits for comments, replies with its model id, and revises the page until the human closes the session and saves a PDF. Use when the human asks to explain, teach, demystify, walk through or deep-dive a concept, design or system, wants a diagram-backed explainer, or wants to discuss an explanation interactively instead of in chat. For reviewing Mermaid diagram files use mermaid-review instead."
+name: presentation
+description: "Present a Markdown document on a live, read-only local page with anchored comments, agent replies, live updates and PDF export. Supports inline SVG diagrams, LaTeX math and sandboxed widgets. Use when presenting a document for interactive discussion, including an alignment brief or explainer, or when opening, reading, replying to or waiting for comments on this surface. Content and workflow decisions belong to the invoking agent; closing a page is not approval."
 ---
 
-# `demystify` — converse on a live explainer
+# `presentation` — discuss a live document
 
-Owns explainer pages: a Markdown document the agent writes, served read-only to
-the human with line and diagram-element comments. Not for code review (`tuicr`)
-or Mermaid file review (`mermaid-review`).
+Owns the presentation surface: a Markdown document the agent writes, served
+read-only to the human with line and diagram-element comments.
+The invoking agent owns content, sourcing requirements, brevity and workflow
+decisions. This skill does not define teaching or development policy.
+Closing a page ends discussion; it does not approve implementation, code or
+publication.
 
-The entry point is `lib/demystify.py` in this skill's directory (Python 3.11+,
+The entry point is `lib/presentation.py` in this skill's directory (Python 3.11+,
 stdlib only). Every command prints JSON. Pass the same document path to each.
 
 ## Workflow
 
 Run this loop until the session is closed.
 
-1. **Build** the page: write `<topic>.md` in the human's workspace or the session
-   files folder (see *Authoring*).
+1. **Build** the page: write `<topic>.md` in your session files folder, not the
+   workspace (see *Authoring*).
 2. **Open** it → verify the JSON has a `url`; tell the human it is open. A tab
    opens only when the server starts; later `open` calls reuse it without one, so
    test with `--no-browser` and pass `--browser` only if the human closed the tab.
    ```bash
-   lib/demystify.py open <doc.md>
+   lib/presentation.py open <doc.md>
    ```
 3. **Wait** for comments, passing your concrete model id (shown to the human):
    ```bash
-   lib/demystify.py wait <doc.md> --model <model-id> --timeout 300
+   lib/presentation.py wait <doc.md> --model <model-id> --timeout 300
    ```
    - `feedback`: answer every entry in `pending`. Each carries `thread`, the
      anchored `context` text and the human's `messages`.
@@ -35,7 +38,7 @@ Run this loop until the session is closed.
 4. **Reply** in the thread, then revise the document if the explanation was
    unclear or wrong. The page reloads on save; comments follow their text.
    ```bash
-   lib/demystify.py reply <doc.md> --model <model-id> --thread <id> --body "…"
+   lib/presentation.py reply <doc.md> --model <model-id> --thread <id> --body "…"
    ```
    Use `--body-file` for long or quoted text. Replies render `**bold**`, `*em*`,
    `` `code` ``, lists, fenced code and `$…$`/`$$…$$` math. Reply before editing so the
@@ -62,19 +65,18 @@ reloads the server; the human's tab reconnects, and a page reload picks up new a
 
 ## Authoring
 
-The human reads the page and saves it as a PDF, so write a standalone explainer,
-not a chat transcript.
+Write a standalone document, not a chat transcript. Diagrams, math, widgets and
+citations are available, not mandatory.
 
 - **One sentence per source line.** Each source line is one selectable line on
   the page; paragraphs still render as flowing text.
-- **Source every factual claim.** Verify that each source supports the claim;
-  attach `[^1]` to its sentence and define `[^1]: [Title](https://…)` on its own
-  line. Reuse numbers. For diagrams, widgets and fenced math, put `[^1]` after
-  the opening fence's language/caption. Cite the underlying model for original
-  diagrams or calculations and label them as derived, not measured or copied.
-  Never invent sources; mark unsupported claims explicitly. Definitions become
-  the final **Sources** section; an optional `## Sources` heading is relocated there.
-  Missing definitions are flagged on the page; duplicates reject the revision.
+- **Citations.** Attach `[^1]` to a sentence and define
+  `[^1]: [Title](https://…)` on its own line. Reuse numbers. For diagrams,
+  widgets and fenced math, put `[^1]` after the opening fence's language/caption.
+  Definitions become the final **Sources** section; an optional `## Sources`
+  heading is relocated there. Missing definitions are flagged on the page;
+  duplicates reject the revision. The invoking agent decides which claims need
+  sources; citation rendering does not verify their accuracy.
 - Supported Markdown: headings, paragraphs, `-`/`1.` lists (nestable), `>`
   quotes, tables, fenced code, `**bold**`, `*em*`, `` `code` ``, http(s) links.
   No raw HTML or images.
@@ -109,17 +111,11 @@ not a chat transcript.
 - Rewriting a commented line detaches its thread (shown as *outdated*, still
   readable). Prefer adding clarifying lines over rewording the commented one.
 
-## Human keys
-
-`j/k` (with counts), `gg/G`, `Ctrl-d/u/f/b`, `{`/`}` sections, `gO` contents, `h/l w/b/e 0/^/$`, `v`/`V` visual,
-`c` comment, `C` whole-document comment, `r` reply, `m/M` next/previous thread,
-`viw` word (no spaces), `vip` paragraph, `gd` cited source (`2gd` second citation),
-`Tab` switch to the thread panel, `/` search, `:w` save PDF, `:q` end session, `:e` reload,
-`?` help; clicking highlighted text opens its thread. Full reference: [README.md](README.md).
-Comments open in Insert mode; Esc enters comment Normal mode for motions and
-yanking, `i` resumes editing, and another Esc closes with the draft kept.
-
 ## Gotchas
+
+- Existing state directories, browser storage keys, widget message markers and
+  the `dm` helper retain their legacy names to preserve saved conversations and
+  authored widgets. Use `open --restart` to update an existing tab's assets.
 
 - `--model` must be your real model id; it is the agent's name on the page.
 - `wait` returns pending comments until each thread has an agent reply, so a
