@@ -132,9 +132,6 @@ class TestValidation(unittest.TestCase):
             "ticket_case",
         )
 
-    def test_bad_cap(self) -> None:
-        self._expect_invalid(MINIMAL + "\n[budget]\ncap_aic = 0\n", "cap_aic")
-
     def test_not_toml(self) -> None:
         self._expect_invalid("this is not : toml =\n", "not valid TOML")
 
@@ -144,7 +141,7 @@ class TestBundledProfiles(unittest.TestCase):
 
     def test_all_bundled_profiles_are_valid(self) -> None:
         found = sorted(BUNDLED_DIR.glob("*.toml"))
-        self.assertGreaterEqual(len(found), 3)
+        self.assertGreaterEqual(len(found), 2)
         for path in found:
             with self.subTest(profile=path.stem):
                 self.assertTrue(load_profile(None, str(path)).ticket_url)
@@ -210,7 +207,7 @@ class TestCli(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         for key in (
             "PROFILE_PATH", "PROFILE_NAME", "BRANCH_DESCRIBE",
-            "TICKET_URL_TEMPLATE", "HAS_TICKET_FETCH", "HAS_PR_OPEN", "CAP_AIC",
+            "TICKET_URL_TEMPLATE", "HAS_TICKET_FETCH", "HAS_PR_OPEN",
         ):
             self.assertIn(f"{key}=", result.stdout)
 

@@ -53,10 +53,6 @@ Keep one design-heavy feature active at a time. Parallelize bounded execution
 within it only when interfaces are stable and results independently checkable.
 Do not open another architectural decision merely because workers are available.
 
-Report budget headroom here (`_toolkit/lib/budget_check.py --by-model`). If the
-month is over cap, say so and get an explicit go-ahead before continuing. Never
-hard-block: the decision is the human's.
-
 ## 2. Offer the build path; let the human choose
 
 Two ways to build, and they cost very differently:
@@ -131,8 +127,8 @@ CREATE TABLE IF NOT EXISTS approvals (
     approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
 ```
 
-Keep the plan, the two path sets, loop counters and budget checkpoints here
-too. State in the database survives compaction; state in your context does not.
+Keep the plan, the two path sets and loop counters here too. State in the
+database survives compaction; state in your context does not.
 
 ## 5. Human review gate
 

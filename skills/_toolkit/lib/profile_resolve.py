@@ -2,8 +2,8 @@
 """Resolve and validate the dev platform profile.
 
 Everything job-specific about the workflow — how branches are named, where
-tickets live, which PR template applies, what the monthly credit cap is — comes
-from one TOML profile so the skill itself stays vendor-neutral. This module is
+tickets live, and which PR template applies — comes from one TOML profile so
+the skill itself stays vendor-neutral. This module is
 both a CLI entry point and the importable helper the other dev scripts use
 (``load_profile``), so profile lookup and validation exist exactly once.
 
@@ -22,7 +22,7 @@ expands ``~`` per element; callers spawn them with ``skillkit.proc.run``, which
 never uses a shell. A ticket id or PR title therefore cannot inject a command.
 
 Emits ``KEY=VALUE``: ``PROFILE_PATH``, ``PROFILE_NAME``, ``BRANCH_DESCRIBE``,
-``TICKET_URL_TEMPLATE``, ``HAS_TICKET_FETCH``, ``HAS_PR_OPEN``, ``CAP_AIC``.
+``TICKET_URL_TEMPLATE``, ``HAS_TICKET_FETCH``, ``HAS_PR_OPEN``.
 
 Exit codes:
     2   Usage error.
@@ -66,10 +66,6 @@ REQUIRED_GROUPS = ("ticket", "slug")
 #: Accepted ``[branch].ticket_case`` values.
 _CASE_MODES = ("upper", "lower", "preserve")
 
-#: Fallback when ``[budget].cap_aic`` is absent.
-DEFAULT_CAP_AIC = 7000
-
-
 @dataclass(frozen=True)
 class Profile:
     """A validated platform profile.
@@ -84,7 +80,6 @@ class Profile:
         ticket_fetch: Argv list that prints the ticket, or empty if unset.
         pr_templates: Worktree-relative PR template candidates, in order.
         pr_open: Argv list that opens the PR, or empty if unset.
-        cap_aic: Monthly credit allowance.
     """
 
     path: Path
@@ -96,7 +91,6 @@ class Profile:
     ticket_fetch: list[str] = field(default_factory=list)
     pr_templates: list[str] = field(default_factory=list)
     pr_open: list[str] = field(default_factory=list)
-    cap_aic: int = DEFAULT_CAP_AIC
 
 
 def _invalid(path: Path, problem: str) -> SkillError:
@@ -160,7 +154,6 @@ def _parse(path: Path) -> Profile:
     branch = _table(data, "branch", path)
     ticket = _table(data, "ticket", path)
     pull_request = _table(data, "pr", path)
-    budget = _table(data, "budget", path)
 
     pattern = _compile_pattern(branch.get("pattern"), path)
 
@@ -174,10 +167,6 @@ def _parse(path: Path) -> Profile:
     ticket_url = ticket.get("url", "")
     if not isinstance(ticket_url, str) or "{ticket}" not in ticket_url:
         raise _invalid(path, "[ticket].url is required and must contain '{ticket}'")
-
-    cap = budget.get("cap_aic", DEFAULT_CAP_AIC)
-    if not isinstance(cap, int) or isinstance(cap, bool) or cap <= 0:
-        raise _invalid(path, "[budget].cap_aic must be a positive integer")
 
     describe = branch.get("describe", "")
     if not isinstance(describe, str):
@@ -197,7 +186,6 @@ def _parse(path: Path) -> Profile:
         ticket_fetch=_string_list(ticket.get("fetch"), path, "[ticket].fetch"),
         pr_templates=_string_list(pull_request.get("templates"), path, "[pr].templates"),
         pr_open=_string_list(pull_request.get("open"), path, "[pr].open"),
-        cap_aic=cap,
     )
 
 
@@ -296,7 +284,6 @@ def main(argv: list[str]) -> int:
         "TICKET_URL_TEMPLATE": profile.ticket_url,
         "HAS_TICKET_FETCH": "1" if profile.ticket_fetch else "0",
         "HAS_PR_OPEN": "1" if profile.pr_open else "0",
-        "CAP_AIC": str(profile.cap_aic),
     })
     return 0
 

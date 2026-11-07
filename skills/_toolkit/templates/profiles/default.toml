@@ -41,7 +41,3 @@ templates = [
 ]
 
 # `open` is intentionally absent: the human opens the PR themselves.
-
-[budget]
-# Monthly credit allowance used by budget-check.py.
-cap_aic = 7000
