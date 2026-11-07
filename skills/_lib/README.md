@@ -25,9 +25,10 @@ splitting cannot go wrong.
 
 ### Scope: Linux, macOS, WSL
 
-`tmux` is an assumed hard dependency — it is the transport that carries a wake
-into a running Copilot CLI pane. It has no native Windows port, so **native
-Windows is out of scope by design**; WSL is the supported path there. Nothing
+`tmux` is the transport that carries a wake into a running Copilot CLI pane,
+and the `tmux` skill uses it for pane management. Application skills must not
+require it to do their work. It has no native Windows port, so **native Windows
+is out of scope by design**; WSL is the supported path there. Nothing
 else in this package is POSIX-bound, so if that dependency ever changes, the
 remaining surface is already portable.
 
@@ -48,10 +49,10 @@ Set `SKILLS_ROOT` to override the location when a skill is vendored elsewhere.
 
 | Module | Responsibility |
 | --- | --- |
-| `proc` | `run()`, `detach()`, `require()`, PID liveness and ancestry |
+| `proc` | `run()`, `detach()`, `require()`, PID liveness, ancestry and descendants |
 | `cli` | `==>` / `WARN:` / `ERROR:` output, `KEY=VALUE` metadata, `run_main()` |
 | `paths` | XDG dirs, local scratch paths, `short_hash()`, atomic writes, tolerant JSON reads |
-| `tmuxio` | Panes, windows, buffers, hex key delivery, focus reporting |
+| `tmuxio` | Exact-ID pane management for the `tmux` skill; buffers, hex key delivery and focus reporting for the wake transport |
 | `tuicrio` | Typed `tuicr` client: `Anchor`, `Comment`, `reply_to()` |
 | `copilot` | CLI session state, pane binding, `events.jsonl` acceptance oracle |
 | `gitio` | Typed `git` wrapper, incl. `default_remote_branch()` |

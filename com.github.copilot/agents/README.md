@@ -8,7 +8,7 @@ Each `*.agent.md` file defines a main-session Copilot CLI agent:
 
 | Agent | Responsibility |
 | --- | --- |
-| `agents:developer` | Brief feature alignment through `presentation`, implementation, and review-gated delivery through `tuicr` and `git-commit`; issue reporting through `github-issue` |
+| `agents:developer` | Brief feature alignment through `presentation`, implementation, and review-gated delivery through `tuicr` (in a `tmux` pane when available) and `git-commit`; issue reporting through `github-issue` |
 | `agents:demystifier` | Sourced concept explanations and interactive discussion through `presentation` |
 
 ## Design criteria

@@ -5,6 +5,7 @@
 - Prefer executable code over prose when defining repeatable processes. Use prose to explain intent, interfaces, and constraints that code cannot express; keep it concise. Each skill must be a standalone capability and must not depend on another skill's files or implementation.
 - Use custom agents to compose skills into constrained workflows. Keep workflow orchestration and cross-capability policy out of individual skills.
 - Keep guardrails and process restrictions to the minimum required for safety and correctness. Otherwise, preserve agent flexibility and rely on best judgment.
+- Never keep backwards compatibility with older versions of external dependencies. When an upgrade breaks behavior, support only the new version. When an agent requests a feature the installed version lacks, emit a Python warning telling the human to upgrade that dependency instead of adding a fallback.
 
 ## Release workflow
 

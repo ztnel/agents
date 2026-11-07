@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.0] - Unreleased
 
+### Added
+- `tmux` skill: list, open, verify, focus, resize, capture and close panes by exact pane ID, with JSON output and explicit exit codes when tmux is missing.
+
 ### Changed
+- `tuicr_up.py` no longer opens tmux windows. It runs tuicr in the current terminal, takes the session to wake as `--cli-session`, and keeps the close report when no wake is possible. The developer agent opens it in a pane through the `tmux` skill, or gives the human the command when tmux is unavailable. `TUICR_WINDOW_NAME` is removed.
 - Skill authoring no longer requires or scaffolds duplicate READMEs; `SKILL.md` is the capability document. Removed the presentation README.
 - Split `demystify` into the standalone `presentation` skill and the `agents:demystifier` custom agent. Invoke `skills/presentation/lib/presentation.py`; the old skill and entry point are removed.
 - Presentation retains rendering, anchored comments, live updates, PDF export and saved conversations. Invoking agents own content and workflow policy; page closure is not approval.
