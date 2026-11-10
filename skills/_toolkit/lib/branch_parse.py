@@ -13,7 +13,7 @@ regex. The emitted keys are vendor-neutral (``TICKET_ID``, not ``JIRA_ID``).
 Emits ``KEY=VALUE``: ``BRANCH``, ``PREFIX``, ``TICKET_ID``, ``TICKET_URL``,
 ``SLUG``, ``SCOPE``, ``WORKTREE_SUFFIX``.
 
-``SCOPE`` is the compact label used for tmux windows, watcher names and
+``SCOPE`` is the compact label used for tmux windows and
 ``review_cycles.scope``; it is the ticket id.
 
 Exit codes:

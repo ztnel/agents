@@ -920,6 +920,8 @@ async function closeSession() {
   try {
     await api("/api/close", {});
     say("session closed: conversation saved; reopen to resume");
+    // Browsers refuse unless the tab is script-closable; the message then stays.
+    window.close();
   } catch (exc) {
     say(exc.message, true);
   }

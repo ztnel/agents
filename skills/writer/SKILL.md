@@ -39,10 +39,11 @@ to keep it before omitting it.
 6. Re-read for semantic equivalence: no changed claim, softened requirement, lost
    warning, or invented certainty.
 
-Use `lib/compare.py` when source and result are available as files:
+Use `$SKILL_DIR/lib/compare.py` when source and result are available as files. `$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
 
 ```bash
-~/.agents/skills/writer/lib/compare.py SOURCE RESULT \
+$SKILL_DIR/lib/compare.py SOURCE RESULT \
   [--require TEXT]... [--json]
 ```
 

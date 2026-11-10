@@ -41,7 +41,7 @@ def config_home() -> Path:
 
 
 def state_dir(*parts: str, create: bool = False) -> Path:
-    """Path under the XDG state root, e.g. ``state_dir("tuicr", "watch")``."""
+    """Path under the XDG state root, e.g. ``state_dir("tuicr", "reviews")``."""
     path = state_home().joinpath(*parts)
     if create:
         path.mkdir(parents=True, exist_ok=True)
@@ -137,8 +137,8 @@ def write_atomic(path: str | Path, text: str, *, encoding: str = "utf-8") -> Non
 
     Writes a sibling temp file, flushes it to disk, then ``os.replace``s it into
     place. A reader therefore sees either the old file or the new one, never a
-    half-written one — which matters for the watcher ledger, read by one process
-    while another rewrites it.
+    half-written one — which matters for state read by one process while another
+    rewrites it.
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

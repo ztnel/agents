@@ -1,6 +1,36 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
+    "tuicr-feedback": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "--project",
+        "${PLUGIN_ROOT}/skills/_lib",
+        "python",
+        "${PLUGIN_ROOT}/skills/tuicr/lib/feedback_server.py"
+      ],
+      "env": {
+        "UV_PROJECT_ENVIRONMENT": "${PLUGIN_DATA}/skillkit-venv"
+      }
+    },
+    "presentation-feedback": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "--project",
+        "${PLUGIN_ROOT}/skills/_lib",
+        "python",
+        "${PLUGIN_ROOT}/skills/presentation/lib/feedback_server.py"
+      ],
+      "env": {
+        "UV_PROJECT_ENVIRONMENT": "${PLUGIN_DATA}/skillkit-venv"
+      }
+    },
     "github": {
       "type": "streamable-http",
       "url": "https://api.githubcopilot.com/mcp/",

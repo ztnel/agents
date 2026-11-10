@@ -2,9 +2,9 @@
 """Run a tuicr review in the current terminal and report how it closed.
 
 Refreshes the review refs (so the diff reflects the remote, not a stale local
-copy), runs tuicr in the foreground over the resolved revset, starts the review
-watch daemon for the given Copilot CLI session, and, after tuicr exits,
-persists the deterministic close report and wakes that session.
+copy), runs tuicr in the foreground over the resolved revset, and, after tuicr
+exits, persists the deterministic close report. The ``tuicr-feedback`` MCP
+server delivers that report to the agent as the review's closure event.
 
 This script never drives a terminal multiplexer. Run it wherever the human will
 review: the caller's agent opens a pane for it (for example through the tmux
@@ -12,13 +12,10 @@ skill), or the human runs it in a terminal of their own.
 
 Usage::
 
-    tuicr_up.py [--cli-session UUID] [directory]
+    tuicr_up.py [directory]
 
 Arguments:
     directory: Git repository to review. Default: current directory.
-    --cli-session: Copilot CLI session to watch for and wake on close. Without
-        it the review still runs and the close report is persisted, but no
-        watcher starts and no wake is sent.
 
 Environment variables:
     TUICR_BASE_REF: Base ref for the review revset. Default: the remote's
@@ -30,13 +27,12 @@ Environment variables:
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 import os
 import json
 import subprocess
 import sys
 import time
+import warnings
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_lib"))
@@ -48,7 +44,7 @@ from skillkit.errors import SkillError  # noqa: E402
 from skillkit.gitio import git  # noqa: E402
 from skillkit.lock import PidFile  # noqa: E402
 from skillkit.proc import run, which  # noqa: E402
-from tuicr_watch import WatchConfig, WakeDeliverer, resolve_target  # noqa: E402
+from skillkit import workqueue  # noqa: E402
 import questions  # noqa: E402
 
 #: ANSI colours for the `[tuicr]` log prefix. Suppressed when stdout is not a
@@ -57,8 +53,13 @@ _GREEN = "\033[0;32m"
 _YELLOW = "\033[1;33m"
 _RED = "\033[0;31m"
 _RESET = "\033[0m"
-_WATCH_RETRY_DELAY = 0.1
-_WATCH_RETRY_LIMIT = 20
+_SLUG_RETRY_DELAY = 0.1
+_SLUG_RETRY_LIMIT = 20
+#: First tuicr that lists a review before it is saved; older ones hide it from
+#: ``tuicr review list`` until the first comment, so agents cannot connect.
+MIN_TUICR = (0, 28)
+#: Orientation comments that survive closure; every settled comment is wiped.
+KEPT_TYPES = frozenset({"description", "review-note"})
 
 
 def _log(colour: str, message: str, stream=sys.stdout) -> None:
@@ -125,6 +126,21 @@ def resolve_revset(target_dir: str) -> str:
     return revset
 
 
+def warn_outdated() -> None:
+    """Warn the human when the installed tuicr is older than :data:`MIN_TUICR`."""
+    words = run(["tuicr", "--version"]).stdout.split()
+    try:
+        installed = tuple(int(part) for part in words[-1].split(".")[:2])
+    except (IndexError, ValueError):
+        return
+    if installed < MIN_TUICR:
+        warnings.warn(
+            f"tuicr {words[-1]} hides unsaved reviews from agents; upgrade to "
+            f"{'.'.join(map(str, MIN_TUICR))} or newer (brew upgrade tuicr)",
+            stacklevel=2,
+        )
+
+
 def active_review_slug(target_dir: str) -> str:
     """Resolve the single active tuicr review session for *target_dir*.
 
@@ -132,7 +148,7 @@ def active_review_slug(target_dir: str) -> str:
     session has not settled yet, the helper retries briefly before failing so
     the launcher does not race the TUI startup.
     """
-    for attempt in range(_WATCH_RETRY_LIMIT):
+    for attempt in range(_SLUG_RETRY_LIMIT):
         result = run(["tuicr", "review", "list", "--repo", target_dir])
         if result.ok:
             try:
@@ -147,40 +163,9 @@ def active_review_slug(target_dir: str) -> str:
                 raise SkillError(
                     f"multiple active tuicr sessions for {target_dir}: {', '.join(active)}"
                 )
-        if attempt + 1 < _WATCH_RETRY_LIMIT:
-            time.sleep(_WATCH_RETRY_DELAY)
+        if attempt + 1 < _SLUG_RETRY_LIMIT:
+            time.sleep(_SLUG_RETRY_DELAY)
     raise SkillError(f"could not resolve an active tuicr session for {target_dir}")
-
-
-def start_watch(target_dir: str, session_slug: str, cli_session: str) -> str:
-    """Start the watch daemon for *session_slug* and return its pidfile label."""
-    watcher = Path(__file__).resolve().parent / "watch_up.py"
-    if not watcher.is_file():
-        raise SkillError(f"Watch helper not found: {watcher}")
-
-    name = f"tuicr-{paths.short_hash(target_dir, session_slug, cli_session)}"
-    args = [
-        sys.executable,
-        str(watcher),
-        "--repo", target_dir,
-        "--session", session_slug,
-        "--cli-session", cli_session,
-        "--name", name,
-    ]
-    result = run(args)
-    if result.stderr:
-        print(result.stderr, file=sys.stderr, end="")
-    if not result.ok:
-        raise SkillError(f"could not start watch daemon: {result.stderr or result.stdout}", code=result.returncode)
-    if result.stdout:
-        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
-    return name
-
-
-def stop_watch(name: str) -> None:
-    """Stop the watch daemon started under *name*."""
-    watcher = Path(__file__).resolve().parent / "watch_up.py"
-    run([sys.executable, str(watcher), "--stop", name])
 
 
 def _read_json_output(result) -> dict:
@@ -215,10 +200,20 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
         reasons.append("not every changed file is reviewed at current content")
     if unanswered:
         reasons.append("questions to the human remain unanswered")
+    queued = workqueue.pending(
+        workqueue.default_inbox("tuicr-feedback"), workqueue.scope(target_dir, slug))
+    if queued:
+        reasons.append("accepted work is queued; apply it and open a new review round")
     approved = not reasons
+    if approved:
+        verdict = "approved"
+    elif exit_code != 0:
+        verdict = "aborted"
+    else:
+        verdict = "changes_queued" if queued else "incomplete"
     return {
         "approved": approved,
-        "verdict": "approved" if approved else ("aborted" if exit_code != 0 else "incomplete"),
+        "verdict": verdict,
         "approval": ApprovalReceipt(
             workspace=str(Path(target_dir).resolve()),
             head=head_after,
@@ -236,53 +231,76 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
         "tuicr_exit_code": exit_code,
         "marks": marks,
         "unanswered": unanswered,
+        "queued": queued,
         "reasons": reasons,
     }
 
 
+def anchor(item: dict) -> dict:
+    start = item.get("start_line") or 0
+    return {
+        "path": item.get("path") or "", "start_line": start,
+        "end_line": item.get("end_line") or start, "side": item.get("side") or "new",
+    }
+
+
+def anchor_key(item: dict) -> str:
+    return json.dumps(anchor(item), sort_keys=True)
+
+
+def settled(comments: list[dict], registered: set[str], answered: set[str]) -> list[str]:
+    """Ids of comments the review has settled: replies and what they answer.
+
+    A later reply at the same anchor answers a comment. Answered questions
+    and their answers are settled; unanswered questions, unanswered comments
+    and orientation comments are not.
+    """
+    replies: dict[str, list[str]] = {}
+    for item in comments:
+        if item.get("comment_type") == "reply":
+            replies.setdefault(anchor_key(item), []).append(item["created_at"])
+    return [
+        item["id"] for item in comments
+        if item.get("comment_type") not in KEPT_TYPES
+        and (item["id"] not in registered or item["id"] in answered)
+        and (
+            item.get("comment_type") == "reply" or item["id"] in answered
+            or any(stamp > item["created_at"] for stamp in replies.get(anchor_key(item), []))
+        )
+    ]
+
+
+def wipe_settled(target_dir: str, slug: str) -> list[str]:
+    """Delete settled comments: their anchors may be stale once work lands."""
+    listed = run(["tuicr", "review", "comments", "--repo", target_dir, "--session", slug])
+    if not listed.ok:
+        raise SkillError(f"could not read comments to wipe: {listed.stderr.strip()}")
+    comments = json.loads(listed.stdout or "[]")
+    ids = settled(comments, questions.registered_ids(target_dir, slug),
+                  questions.answered(target_dir, slug))
+    for comment_id in ids:
+        result = run(["tuicr", "review", "delete", "--repo", target_dir,
+                      "--session", slug, "--comment-id", comment_id])
+        if not result.ok:
+            raise SkillError(f"could not delete comment {comment_id}: {result.stderr.strip()}")
+    questions.forget(target_dir, slug, set(ids))
+    return ids
+
+
+def report_path(target_dir: str, slug: str) -> Path:
+    """Deterministic close-report path for one review session."""
+    return paths.state_dir("tuicr", "reviews", create=True) / f"{paths.short_hash(target_dir, slug)}.json"
+
+
 def persist_close_report(target_dir: str, slug: str, verdict: dict) -> Path:
     """Write the close report to its deterministic per-session path."""
-    state_dir = paths.state_dir("tuicr", "reviews", create=True)
-    state_file = state_dir / f"{paths.short_hash(target_dir, slug)}.json"
+    state_file = report_path(target_dir, slug)
     paths.write_json_atomic(state_file, verdict, indent=2)
     return state_file
 
 
-def wake_closed_review(target_dir: str, slug: str, cli_session: str, verdict: dict) -> None:
-    """Wake the spawning CLI with the persisted close verdict."""
-    state_file = persist_close_report(target_dir, slug, verdict)
-    report_identity = json.dumps(verdict, sort_keys=True, separators=(",", ":"))
-    token = "tuicr-close-" + paths.short_hash(slug, report_identity)
-    prompt = (
-        f"tuicr close {token}: review session {slug} closed with "
-        f"verdict={verdict['verdict']} ({target_dir}); report={state_file}. "
-        "Follow the tuicr Close contract."
-    )
-    config = WatchConfig(repo=target_dir, session=slug, cli_session=cli_session)
-    session, pane = resolve_target(config)
-    deliverer = WakeDeliverer(config, session, pane, target_dir)
-    try:
-        if not deliverer.deliver_prompt(prompt, token, f"closed session {slug}"):
-            raise SkillError("could not deliver review-close wake")
-    finally:
-        deliverer.close()
-
-
-def start_watch_quietly(target_dir: str, slug: str, cli_session: str) -> tuple[str, str]:
-    """Start the watcher without writing over the running TUI.
-
-    Returns the watch name ("" if it could not start) and its captured output.
-    """
-    captured = io.StringIO()
-    with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
-        try:
-            return start_watch(target_dir, slug, cli_session), captured.getvalue()
-        except SkillError as exc:
-            return "", f"{captured.getvalue()}watcher not started: {exc}\n"
-
-
-def launch(target_dir: str, cli_session: str) -> int:
-    """Run tuicr in this terminal until it exits, then report the close."""
+def launch(target_dir: str) -> int:
+    """Run tuicr in this terminal until it exits, then persist the close report."""
     remote = os.environ.get("TUICR_REMOTE", "origin")
     dirty = bool(git(target_dir, "status", "--porcelain").stdout.strip())
     revset = ""
@@ -298,45 +316,39 @@ def launch(target_dir: str, cli_session: str) -> int:
     # take it over; capturing its output would hand nvim a pipe.
     command = ["tuicr", "-w"] if dirty else ["tuicr", "-r", revset]
     process = subprocess.Popen(command, cwd=target_dir)  # noqa: S603 - argument vector
-    watch_name, watch_output = "", ""
     try:
         review_slug = active_review_slug(target_dir)
-        if cli_session:
-            watch_name, watch_output = start_watch_quietly(target_dir, review_slug, cli_session)
+        # A report left by an earlier review of this session must not read as
+        # closure while this one is still open.
+        report_path(target_dir, review_slug).unlink(missing_ok=True)
+        # Work queued in the previous round was applied before this one opened.
+        workqueue.archive(
+            workqueue.default_inbox("tuicr-feedback"), workqueue.scope(target_dir, review_slug))
         exit_code = process.wait()
     finally:
         if process.poll() is None:
             process.wait()
-        if watch_name:
-            stop_watch(watch_name)
-    if watch_output:
-        print(watch_output, end="" if watch_output.endswith("\n") else "\n")
     log_info("tuicr finished")
     log_info("If you exported instructions, they are in your clipboard")
 
     verdict = review_verdict(target_dir, review_slug, head_before, exit_code)
-    if not cli_session:
-        report = persist_close_report(target_dir, review_slug, verdict)
-        log_info(f"Close report: {report} (verdict={verdict['verdict']}; no CLI session to wake)")
-        return 0
-    try:
-        wake_closed_review(target_dir, review_slug, cli_session, verdict)
-    except SkillError as exc:
-        report = persist_close_report(target_dir, review_slug, verdict)
-        log_warn(f"Could not wake the CLI session ({exc}); close report: {report}")
+    wiped = wipe_settled(target_dir, review_slug)
+    log_info(f"Wiped {len(wiped)} settled comment(s); descriptions and review notes remain")
+    report = persist_close_report(target_dir, review_slug, verdict)
+    log_info(f"verdict={verdict['verdict']}; report={report}")
     return 0
 
 
 def main(argv: list[str]) -> int:
     """Entry point."""
     parser = argparse.ArgumentParser(prog="tuicr_up.py", description=__doc__.split("\n\n")[0])
-    parser.add_argument("--cli-session", default="", help="Copilot CLI session to watch for and wake.")
     parser.add_argument("directory", nargs="?", default=".")
     args = parser.parse_args(argv)
 
     if which("tuicr") is None:
         log_error("tuicr not found. Install it first.")
         return 1
+    warn_outdated()
 
     if not Path(args.directory).is_dir():
         log_error(f"Not a git repository: {args.directory}")
@@ -350,12 +362,10 @@ def main(argv: list[str]) -> int:
     lock = review_lock(target_dir)
     if lock.live_owner() is not None:
         log_warn(f"tuicr is already reviewing {target_dir} (launcher PID {lock.live_owner()})")
-        if args.cli_session:
-            start_watch(target_dir, active_review_slug(target_dir), args.cli_session)
         return 0
 
     with lock:
-        return launch(target_dir, args.cli_session)
+        return launch(target_dir)
 
 
 if __name__ == "__main__":

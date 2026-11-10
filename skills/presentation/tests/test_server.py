@@ -63,6 +63,20 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.call("/agent/read")["pending"], [])
         self.assertEqual(self.call("/agent/wait?model=m-1&timeout=1")["status"], "timeout")
 
+    def test_unattached_server_exits_without_closing_the_session(self):
+        srv = server.serve(self.doc, self.dir / "idle.json", "tok", idle=0.4)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(srv.server_close)
+        request = urllib.request.Request(
+            f"{srv.origin}/agent/wait?model=m-1&timeout=1", headers={"X-Token": "tok"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(json.loads(response.read())["status"], "timeout")
+        self.assertTrue(thread.is_alive(), "a request in flight keeps the server up")
+        thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertFalse(srv.session.closed)
+
     def test_close_ends_waits_and_persists(self):
         thread, result = self.wait_async()
         self.call("/api/close", {})

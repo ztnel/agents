@@ -9,8 +9,9 @@
     presentation.py close <doc.md>
     presentation.py list
 
-Outputs JSON on stdout. ``open`` reuses a running server for the same document and opens a browser tab
-only when it starts a server; ``--browser`` reopens one.
+Outputs JSON on stdout. ``open`` reuses a running server for the same document. A browser tab opens
+when the agent first waits, never before, so no comment precedes a listener; ``open`` requests one
+only when it starts a server, and ``--browser`` requests another.
 """
 
 from __future__ import annotations
@@ -37,6 +38,8 @@ import server  # noqa: E402
 
 # Preserve saved conversations and running sessions from before the skill split.
 STATE = ("demystify",)
+#: Marker asking the server to open a tab once an agent waits.
+BROWSER = "browser.pending"
 
 
 def session_dir(doc: Path, create: bool = False) -> Path:
@@ -115,6 +118,7 @@ def cmd_open(args) -> dict:
             reused = False
         if not reused:
             (directory / "session.json").unlink(missing_ok=True)
+            (directory / BROWSER).unlink(missing_ok=True)
             pid = proc.detach([sys.executable, str(Path(__file__).resolve()), "serve", str(doc)],
                               directory / "server.log")
             deadline = time.monotonic() + 10
@@ -124,9 +128,11 @@ def cmd_open(args) -> dict:
                     raise SkillError(f"server failed to start; see {directory / 'server.log'}")
                 time.sleep(0.1)
     reconnects = previous is not None and previous["port"] == meta["port"]
-    if args.browser or not (reused or reconnects or args.no_browser):
-        webbrowser.open(url(meta))
-    return {"doc": str(doc), "url": url(meta), "reused": reused, "pid": meta["pid"]}
+    tab = bool(args.browser or not (reused or reconnects or args.no_browser))
+    if tab:
+        (directory / BROWSER).touch()
+    return {"doc": str(doc), "url": url(meta), "reused": reused, "pid": meta["pid"],
+            "browser": "opens when you wait" if tab else None}
 
 
 def cmd_serve(args) -> None:
@@ -152,6 +158,14 @@ def cmd_serve(args) -> None:
     except OSError:  # the old port was taken meanwhile; open will start a new tab
         token = server.new_token()
         srv = server.serve(doc, directory / "threads.json", token, ready=ready)
+    def reveal() -> None:
+        try:
+            (directory / BROWSER).unlink()
+        except FileNotFoundError:
+            return
+        webbrowser.open(f"http://127.0.0.1:{srv.server_port}/#t={token}")
+
+    srv.session.on_listen = reveal
     try:
         srv.serve_forever()
     finally:

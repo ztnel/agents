@@ -10,7 +10,7 @@ GitHub Copilot CLI plugin for personal agent infrastructure.
 This repository is an [Agent Plugins 1.0.0](https://agent-plugins.org/specification) package. The canonical schema identifier in `plugin.json` pins the package format to exactly `1.0.0`.
 
 - `plugin.json` is the Copilot plugin manifest.
-- `mcp.json` configures the official GitHub MCP endpoint for the `repos` and `issues` toolsets.
+- `mcp.json` configures the GitHub MCP endpoint and the skill-owned review-feedback servers.
 - `skills/` contains Agent Skills discovered as immediate child directories with `SKILL.md`.
 - `com.github.copilot/` contains Copilot CLI custom agents exposed through the manifest extension namespace.
 
@@ -35,9 +35,11 @@ copilot --plugin-dir ./agents
 ```
 
 Copilot loads the skills, the custom agents under `com.github.copilot/`, and the
-root GitHub MCP configuration.
+root MCP configuration.
+The review-feedback servers require `uv`; see the [shared feedback contract](skills/_lib/README.md).
 
 ## Documentation
 
+- [Infrastructure megadrawing](docs/INFRASTRUCTURE.md)
 - [Architecture and design criteria](docs/ARCH.md)
 - [CI and validation](docs/CI.md)

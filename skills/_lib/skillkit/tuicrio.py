@@ -8,8 +8,8 @@ because getting them wrong causes silent misbehaviour rather than an error:
   side)`` anchor matches exactly and it was created later. See :class:`Anchor`.
 * **Omitting ``--end-line`` is not "unset"**, it silently files the reply at
   ``start_line..start_line``. On a multi-line comment that is a *different*
-  anchor, so the reply neither threads nor marks the comment answered — and a
-  watcher will re-deliver that comment until its attempt budget is spent.
+  anchor, so the reply neither threads nor marks the comment answered — and the
+  feedback server keeps delivering that comment as pending.
 * ``tuicr review comments`` does **not** return an ``author`` field.
 
 :meth:`Comment.reply` exists so a reply's anchor is *copied* from its parent
@@ -27,8 +27,8 @@ from typing import Any, Iterable, Sequence
 from .errors import SkillError
 from .proc import run
 
-#: ``comment_type`` values a watcher ignores by default. Agents post these
-#: types, so ignoring them prevents self-wake loops.
+#: ``comment_type`` values that never count as human feedback. Agents post these
+#: types, so ignoring them keeps an agent from answering itself.
 DEFAULT_IGNORE_TYPES = ("reply", "description", "review-note")
 
 
@@ -36,7 +36,7 @@ class TuicrError(SkillError):
     """A ``tuicr`` invocation failed.
 
     Distinct from "no comments": a transport failure that looked like an empty
-    result would leave a watcher reporting healthy while ignoring the human.
+    result would leave a feedback loop reporting healthy while ignoring the human.
     """
 
 

@@ -28,8 +28,17 @@ jobs:
       - name: Install tmux
         run: sudo apt-get update && sudo apt-get install -y tmux
 
+      - name: Install uv for the feedback MCP servers
+        run: python -m pip install uv
+
+      - name: Install tuicr for the end-to-end review run
+        run: |
+          curl -fsSL https://github.com/agavra/tuicr/releases/download/v0.28.0/tuicr-0.28.0-x86_64-unknown-linux-gnu.tar.gz \
+            | sudo tar xz -C /usr/local/bin tuicr
+          tuicr --version
+
       - name: Run regression harness
-        run: python tests/run_ci.py
+        run: uv run --frozen --project skills/_lib python tests/run_ci.py
 
   smoke:
     runs-on: ubuntu-latest
@@ -54,6 +63,9 @@ jobs:
       - name: Install Copilot CLI
         # Pin to the validated baseline; bump intentionally with re-validation.
         run: npm install -g @github/copilot@1.0.86
+
+      - name: Install uv for the feedback MCP servers
+        run: python -m pip install uv
 
       - name: Install the workspace plugin
         run: copilot plugin install "$GITHUB_WORKSPACE"

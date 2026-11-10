@@ -1,10 +1,12 @@
 # `tuicr/lib` — review-session tooling
 
 Scripts backing the `tuicr` skill: opening a review window, keeping its refs
-honest, and running the live-watch daemon that wakes an agent when the human
-leaves a comment.
+honest, writing the close report, and serving review feedback to agents over
+MCP.
 
-Scripts are executable Python entry points using only the standard library.
+Scripts are executable Python entry points using only the standard library,
+except `feedback_server.py`, which needs `mcp` via
+`uv run --project skills/_lib`.
 Shared primitives live in [`../../_lib/skillkit`](../../_lib/README.md).
 
 ## Public contract
@@ -59,21 +61,22 @@ persisted tuicr session files for recovery.
 Exits non-zero with a message naming the valid subcommands when one is omitted,
 and lists the available comment ids when `--to` names an unknown one.
 
-### `tuicr_up.py [--cli-session UUID] [directory]`
+### `tuicr_up.py [directory]`
 
 Runs tuicr in the foreground of the current terminal over a freshly-resolved
-revset, starts the watch daemon for `--cli-session`, and blocks until tuicr
-exits. It then stops the comment watcher, evaluates review marks against the
-unchanged `HEAD`, checks explicitly registered questions to the human, persists
-a JSON verdict under the tuicr XDG state directory, and wakes that session with
-the report path. A killed or failed tuicr is always `aborted`.
+revset, deletes any stale close report for the active session, and blocks until
+tuicr exits. It then evaluates review marks against the unchanged `HEAD`, checks
+explicitly registered questions to the human, deletes settled comments
+(`settled()`: replies, what they answer and answered questions; descriptions,
+review notes and anything unanswered stay), and persists the JSON verdict
+(`approved`/`incomplete`/`aborted`) to `$XDG_STATE_HOME/tuicr/reviews/<hash>.json`
+(`report_path()`), which `feedback_server.py` delivers as the closure event. A
+killed or failed tuicr is always `aborted`.
 
 It opens no terminals: the invoking workflow chooses where it runs. tuicr
 inherits the terminal, so `e` can open the editor named by that terminal's
 `EDITOR`/`VISUAL`. Exported instructions use tuicr's clipboard path rather than
-`--stdout` capture. Without `--cli-session`, no watcher starts and no wake is
-sent; the close report is still written. A failed wake is a warning that names
-the report path, not a failed review.
+`--stdout` capture.
 
 Reviewed regular files carry `content_sha256` fingerprints in `marks.files`.
 Consumers verify their own inputs against those fingerprints before acting.
@@ -96,15 +99,14 @@ the binding; re-register edited questions and link a new human answer. Orientati
 types (`description`, `review-note`) cannot be registered. The registry is
 skill-owned state under `XDG_STATE_HOME/tuicr/questions`, keyed by checkout
 and session; persisted tuicr sessions and human marks are never modified.
-Registered questions are excluded from agent wake work, not from review.
+Registered questions are never pending feedback, but still block approval.
 
 Configured by environment: `TUICR_BASE_REF` (default: **the remote's own default branch**, never a
 hardcoded name), `TUICR_HEAD_REF` (default `HEAD`), `TUICR_REMOTE` (default
 `origin`).
 
 If the launcher is already reviewing that checkout (a per-checkout pidfile under
-`XDG_STATE_HOME/tuicr/running`), it exits 0 and only starts the watcher for the
-active session instead of running a second tuicr.
+`XDG_STATE_HOME/tuicr/running`), it exits 0 instead of running a second tuicr.
 Persisted sessions are reused across review cycles so unchanged human review
 marks survive. tuicr owns mark invalidation when file content changes; callers
 must not move, replace, delete, or edit session files to force a refresh.
@@ -134,87 +136,38 @@ Emits `REVIEW_BASE_REF`, `REVIEW_HEAD_REF`, `REVIEW_REVSET` as shell-`eval`-safe
 Exits 6 and 7 are deliberate refusals: reviewing a stale `HEAD` shows the human
 a diff that does not match the branch.
 
-### `watch_up.py`
+### `feedback_server.py`
 
-Daemon lifecycle for `tuicr-watch`. Generic — it knows nothing about any
-workflow, so an orchestrator, a solo agent or a human drive it identically.
-
-```
-watch_up.py --repo D --session SLUG --cli-session UUID
-            [--cli-pane P] [--name ID] [--persistent]
-            [--ignore-type T]... [--rearm S] [--max-attempts N]
-            [--event-timeout S] [--queue-timeout S] [--state-dir D]
-watch_up.py --stop NAME | --stop-all [--prefix P] [--exclude S] | --list
-```
-
-Emits `WATCH_PID`, `WATCH_PIDFILE`, `WATCH_LOG`, `WATCH_NAME`,
-`WATCH_PERSISTENT`. Starting is **idempotent by replacement**: if the pidfile
-already names a live watcher, it is stopped and replaced with a fresh daemon
-for the same `(repo, session)`. Exit 2 for a missing required option, 3 for a
-missing watcher/repo, 4 if the daemon died during startup.
-
-`--name` lets a caller running several watchers retire exactly the one it means.
-`--persistent` only *tags* the watcher so a bulk `--stop-all` can skip it.
-
-### `tuicr_watch.py`
-
-The daemon. Watches one session and wakes a Copilot CLI session when a comment
-awaits a response. Run `--help` for the full option list; `--once --replay
---dry-run` tests detection without touching tmux or state.
+Stdio MCP server `tuicr-feedback`, run from the plugin's `mcp.json`. Adds
+`connect_review(repo, session=None)` (session is a slug; default the repo's
+active session) to the common tools from
+[`skillkit.feedback`](../../_lib/README.md#review-feedback-contract):
+`read_review`, `receive_feedback`, `acknowledge_feedback`, `reply`,
+`wait_for_feedback`. Pending comments exclude agent `reply`, `description`,
+and `review-note` types, registered questions, and comments with a later reply
+at the same anchor. `reply` posts a `--type reply` at the original's anchor,
+prefixed with its verdict; an `accepted` task is labelled **Queued** and queued under `(repo, slug)` in
+the inbox database (`skillkit.workqueue`). While the review is open, `wait` and
+`reply` refuse once HEAD, `git status` or a dirty file's content changes;
+`connect_review` re-baselines. Closure is the close report: `closure =
+{"verdict", "report", "queued"}` for sessions launched by `tuicr_up.py`,
+ignored while the session is active again (a new round);
+otherwise `closed` is `null` (unknown). `tuicr_up.py` reports
+`changes_queued` (never approved) while the queue is non-empty and archives it
+when the next round opens. Closure never implies approval — read the report.
 
 ## Design criteria
 
-**The wake prompt is deliberately minimal.** It names the session and the
-pending count and points at the skill's Wake contract — nothing else. Behaviour
-lives in the skill, not the prompt, so it is identical whether the woken session
-is a lone coding agent or an orchestrator brokering to sub-agents. The human's
-comment text is never echoed back into the agent's input.
-
-**Acceptance is proven from persisted events, never from the screen.** A wake
-counts as delivered only once it appears in the session's `events.jsonl` as a
-`user.message`. Terminal rendering is a diagnostic and can lie.
-
-**Pane binding is re-checked before every injection.** If the agent exited and a
-shell reclaimed the pane, pasting a prompt and pressing Enter would execute it
-as a shell command. This is a safety check, not an optimisation, and an
-ambiguous match is always an error — never a guess. The daemon still wakes a
-live CLI even if the input box already contains text.
-
-**A tuicr failure is never "no comments".** Conflating them would leave the
-daemon reporting healthy while silently ignoring the human forever.
-
-**But a permanent failure ends the watch.** Refusing to treat a read failure as
-"no comments" must not mean waiting forever: a watcher whose review window had
-been closed was observed logging 920 consecutive failures with no end. The two
-cases are distinguished by `review list` — if it still answers but no longer
-names the slug, tuicr is up and the session is genuinely gone, so the daemon
-exits 0 with a reason. If `review list` fails too, tuicr itself is down, the
-session's fate is unknown, and the daemon keeps waiting. The check only runs
-after a ~60 s grace period and only while already failing, so restarting tuicr
-never looks like the review ending and the poll loop is unaffected.
-
 **Threading is positional.** tuicr comments carry no parent id; a reply attaches
-to a comment only when `(path, start_line, end_line, side)` match exactly. The
-daemon uses that same tuple to decide "answered", so a mis-anchored reply causes
-the comment to stay pending and be re-delivered until its attempt budget is
-spent. `skillkit.tuicrio.reply_to()` copies the parent's anchor to make that
-class of bug unrepresentable.
+to a comment only when `(path, start_line, end_line, side)` match exactly.
+Pending detection uses that same tuple to decide "answered", so a mis-anchored
+reply leaves the comment pending and it is redelivered.
+`skillkit.tuicrio.reply_to()` and the feedback server's `reply` copy the
+parent's anchor to make that class of bug unrepresentable.
 
-**State is keyed by repo *and* slug.** Slugs are not unique across checkouts, so
-hashing the slug alone would let two repositories share — and corrupt — one
-ledger.
-
-**Debounce before firing.** The pending set must be stable across two polls, so
-a burst of comments produces one wake instead of one per comment.
-
-## Performance note
-
-The daemon polls, so process spawns in its hot loop are the only place execution
-cost matters in this collection. The shell version spawned `python3` at 11 sites,
-two of them *per iteration* of the submit-confirmation loop — about 68 ms of
-overhead on a 100 ms step, inflating it to ~168 ms. All of those are now
-in-process calls: the measured per-iteration overhead is 0.18 ms, so the poll
-step is the step it claims to be.
+**Closure is authoritative only from the launcher.** The close report is the
+single source of the verdict; a session opened another way reports unknown
+closure rather than guessing.
 
 ## Tests
 
@@ -222,7 +175,7 @@ step is the step it claims to be.
 bash ../tests/test-review-frontdoor.sh     # argv validation, anchor inheritance
 python3 ../tests/test_review_marks.py      # mark coverage and freshness gate
 python3 ../tests/test_review_close.py      # close approval classification
-bash ../tests/test-tuicr-watch.sh          # transport, selection, portability
+uv run --project ../../_lib python ../tests/test_feedback_server.py  # MCP conformance
 bash ../tests/test-refresh-review-refs.sh  # ref resolution, ff, refusals
 bash ../../tests/test-portability.sh       # repo-wide guards
 ```

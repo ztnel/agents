@@ -108,7 +108,7 @@ else
   esac
   case "${add_line}" in
     *"--type reply"*) : ;;
-    *) fail "reply must be typed 'reply' so it never wakes the watcher: ${add_line}" ;;
+    *) fail "reply must be typed 'reply' so it is never delivered as human feedback: ${add_line}" ;;
   esac
 fi
 case "${out}" in

@@ -17,12 +17,15 @@ server, session or global options.
 
 ## Commands
 
+`$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
+
 ```bash
-T=~/.agents/skills/tmux/lib/tmux_pane.py
+T=$SKILL_DIR/lib/tmux_pane.py
 $T status                                   # {"available", "inside", "pane", "version"}
 $T list [--scope all|session|window] [--target T]
 $T open --cwd DIR [--window NAME | --split h|v [--size 40%]] [--target %PANE] \
-        [--env NAME]... [--expect PROCESS] [--timeout 10] [--settle 0.3] [--focus] \
+        [--env NAME]... [--expect PROCESS] [--timeout 10] [--settle 0.3] \
         -- COMMAND [ARG]...
 $T focus   --pane %PANE
 $T resize  --pane %PANE [--width N|N%] [--height N|N%]
@@ -58,8 +61,8 @@ Every command prints one JSON object. Pane descriptions include `pane_id`,
 
 ## Gotchas
 
-- `open` never steals focus. Pass `--focus`, or call `focus`, once the human
-  should look at the pane.
+- `open` never steals focus: the human keeps working where they are. Tell them
+  the window name instead; call `focus` only when they ask to be taken there.
 - New panes inherit the tmux server's environment, not the caller's shell.
   Forward what the command needs with `--env`, for example `EDITOR`.
 - `pane_current_command` names the pane's foreground process (often the

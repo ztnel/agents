@@ -33,10 +33,13 @@ The brief contains:
 - **Open decisions:** only uncertainties requiring human judgment.
 
 Label proposed requirements, assumptions and verified facts distinctly.
-Use diagrams only when they reduce explanation. Answer comments through the
-presentation loop and revise the brief before proceeding.
-Require explicit human agreement on the current brief, in a presentation
-thread or through `ask_user`. Closing the page is not agreement and does not
+Use diagrams only when they reduce explanation. Once the brief is open, stay
+in the `presentation-feedback` `wait_for_feedback` loop: answer every comment
+in its thread and revise the brief before proceeding. Put open decisions in
+the brief, not in `ask_user`; use `ask_user` only when the loop has nothing
+pending, and never while it does.
+Require explicit human agreement on the current brief, preferably in a
+presentation thread. Closing the page is not agreement and does not
 authorize coding. Record the agreed brief and the human's agreement in the
 session database; a material revision needs fresh agreement.
 
@@ -96,7 +99,8 @@ role_guard.py snapshot --repo <dir> --out <baseline>
 role_guard.py enforce --repo <dir> --baseline <baseline> --allow '<glob>'...
 ```
 
-Live in `~/.agents/skills/_toolkit/lib/`. Out-of-scope edits are reverted and
+Live in the plugin's `skills/_toolkit/lib/`, a sibling of any loaded skill:
+`$SKILL_DIR/../_toolkit/lib/`. Out-of-scope edits are reverted and
 reported. A `BLOCKED` path was already dirty before the dispatch and cannot be
 safely reverted — that one needs the human, so raise it rather than working
 around it.
@@ -106,48 +110,41 @@ for the same tokens twice.
 
 ## 4. Provenance ledger
 
-**No code is committed unattributed.** Track, in the session database, which
-model authored each changed file and which reviewed it. `enforce` already emits
-`AUTHORED=<path>` for exactly the paths a dispatch legitimately changed — that
-is your author feed, so no second pass over the tree is needed. Your own direct
-edits are recorded the same way; working directly is not an exemption.
+**No code is committed unattributed.** Record which model authored each
+changed file, and which reviewed it, with `ledger.py` (next to `role_guard.py`).
+`enforce` already emits `AUTHORED=<path>` for exactly the paths a dispatch
+legitimately changed; pass those lines straight through. Your own direct edits
+are recorded the same way; working directly is not an exemption.
 
-```sql
-CREATE TABLE IF NOT EXISTS file_provenance (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    repo TEXT NOT NULL, file_path TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('author','reviewer')),
-    model_id TEXT NOT NULL, note TEXT,
-    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-
-CREATE TABLE IF NOT EXISTS approvals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    repo TEXT NOT NULL, head_sha TEXT NOT NULL, staged_digest TEXT NOT NULL,
-    approver TEXT NOT NULL, phrase TEXT, commit_sha TEXT,
-    approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+```bash
+ledger.py author   --repo <dir> --model <model-id> <path|AUTHORED=path>...
+ledger.py reviewer --repo <dir> --model <model-id> <path>...
 ```
 
-Keep the plan, the two path sets and loop counters here too. State in the
-database survives compaction; state in your context does not.
+Use concrete model IDs; the ledger refuses placeholders such as `auto`.
+
+Keep the plan, the two path sets and loop counters in the session database.
+The ledger and the database survive compaction; your context does not.
 
 ## 5. Human review gate
 
 All work — from a loop or from your own hands — is presented **unstaged** for
 human review. Open the review surface proactively via the `tuicr` skill and say
-it is ready. Never commit unreviewed work, and never commit while a watch loop
-is live.
+it is ready. Never commit unreviewed work, never commit while a `tuicr-feedback` batch is
+unacknowledged, and never commit in response to a feedback event.
 
 ### Where the review runs
 
 `tuicr` says what to run; the `tmux` skill decides where. Run `tuicr_up.py`
-with your full session ID as `--cli-session`, never in your own tool shell:
+somewhere the human can see, never in your own tool shell, then connect to the
+session through the `tuicr-feedback` MCP server:
 
 - Check `tmux_pane.py status`. If tmux is available and you are inside it,
   `open` a window in the repository with `--env EDITOR --env VISUAL --expect
-  tuicr --focus` and record the returned `pane_id`.
+  tuicr`, record the returned `pane_id`, and tell the human the window name.
 - Otherwise, or if `open` fails, give the human the exact `tuicr_up.py` command
-  to run in their own terminal, then wait. tmux is never required; a missing
-  wake is not a failed review, and the close report path is deterministic.
+  to run in their own terminal, then wait. tmux is never required; the
+  close report path is deterministic and arrives as the `closure` event.
 - If a session is already active, reuse it rather than opening another.
 
 Close only panes you opened, by `pane_id`, and only after the review closes.
@@ -158,9 +155,17 @@ criteria. If the human cannot explain the design and its main failure modes,
 clarify or reduce scope before seeking approval. Review marks do not substitute
 for understanding.
 
-When the human requests a change, decide whether it warrants another TDD loop
-or a direct edit, and **say which and why**. Same judgement as section 2,
-applied to a smaller change.
+### Batch on close
+
+The human batches feedback by choosing when to close the review. While it is
+open, answer every comment through the feedback server's `reply` with a
+verdict, queue each `accepted` task and mirror it in your todo list, and edit
+nothing; the server refuses once the tree changes. A `changes_queued` closure
+returns the queue. Apply it, record provenance, rerun the validation gate, and
+open a new round. For each queued change, decide whether it warrants another
+TDD loop or a direct edit, and **say which and why**. Same judgement as
+section 2, applied to a smaller change. You own the review loop: a sub-agent
+applying queued work must not connect to, reply in or reopen the review.
 
 ### GitHub issue workflow
 
@@ -169,7 +174,7 @@ for repository resolution, duplicate search, draft persistence, metadata
 validation, and the final GitHub MCP call. Use `writer` only to tighten the
 human-facing prose; do not duplicate its documentation rules here.
 
-Issue creation is blocked until the exact Markdown draft is human-marked reviewed in `tuicr`. Preserve the local review repo and session across draft revisions so unchanged marks survive. A wake event may only handle local comments and draft edits; never create an issue from a wake event. Only act on an approved close report for the exact draft, target repo, and unchanged HEAD.
+Issue creation is blocked until the exact Markdown draft is human-marked reviewed in `tuicr`. Preserve the local review repo and session across draft revisions so unchanged marks survive. A feedback event may only handle local comments and draft edits; never create an issue from a feedback event. Only act on an approved close report for the exact draft, target repo, and unchanged HEAD.
 
 Read the human identity for `Identified by` and `Approved by` from real email
 addresses. When you need the approver address yourself, read `git config
@@ -182,27 +187,24 @@ cross-skill review gate and the decision to proceed.
 
 ## 6. Commit and push
 
-An `approved` tuicr close report is explicit human approval. Act on it
-immediately:
+An `approved` tuicr close report is explicit human approval. It arrives as the
+`tuicr-feedback` `closure` event; closure alone is not approval. Act on it
+immediately; do not end your turn until the change is pushed or a blocker is
+reported:
 
-1. Read the report and require a clean exit, unchanged `HEAD`, no unanswered
-   comments, and every reported file reviewed at current content.
-2. Require an empty index, then stage exactly the paths in `marks.files`.
-   Refuse unrelated staged paths, paths not named by the report, or any change
-   since the report. Never use `git add -A`, `git add .`, or another broad
-   staging command.
-3. Record the approval using the report token/path, the approver identity from
-   `git config`, the approved `HEAD`, and a digest of the staged set.
-4. Commit through the `git-commit` skill, resolving its flags from the ledger
-   for the staged paths only:
+1. Run `ledger.py approve --repo <dir> --report <closure.report>`. It refuses
+   unless the verdict is approved, `HEAD` is unchanged, no comment is
+   unanswered, every reported file is reviewed at current content, and the
+   index is empty. It then stages exactly `marks.files` and records the
+   approval. Never stage with `git add -A`, `git add .`, or by hand.
+2. Run `ledger.py commit-flags --repo <dir>`. It refuses if any staged path
+   has no author, or the index or `HEAD` changed since approval; a changed
+   diff needs a fresh review. Pass one `--author-model` per `AUTHOR_MODEL`
+   line and one `--reviewer-model` per `REVIEWER_MODEL` line to `git-commit`.
+3. After the commit, run `ledger.py committed --repo <dir>`.
 
-- one `--author-model` per distinct author model
-- one `--reviewer-model` per distinct agent reviewer
-
-Refuse to commit if any staged path has no author row, or if the approval no
-longer matches the staged set — a changed diff needs a fresh approval. Never
-default an unknown author to yourself: that turns an unknown into a false
-attribution, which is the one thing the ledger exists to prevent.
+Never default an unknown author to yourself: that turns an unknown into a
+false attribution, which is the one thing the ledger exists to prevent.
 
 After a successful commit, push to the branch's configured upstream. Refuse to
 guess a remote or branch, set an upstream, force-push, or bypass a rejected

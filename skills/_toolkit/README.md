@@ -62,6 +62,26 @@ Globs are git-style: `**` spans separators, `*` and `?` do not, and a trailing
 Exits: `0` all in scope, `2` usage, `3` not a repository or unreadable
 baseline, `4` out-of-scope changes found.
 
+### `ledger.py {author,reviewer,approve,commit-flags,committed}`
+
+The developer's provenance and commit gate, kept in
+`$XDG_STATE_HOME/developer/ledger.sqlite` and keyed by repository root.
+
+```bash
+ledger.py author   --repo <dir> --model <id> <path|AUTHORED=path>...
+ledger.py reviewer --repo <dir> --model <id> <path>...
+ledger.py approve  --repo <dir> --report <tuicr close report>
+ledger.py commit-flags --repo <dir>
+ledger.py committed    --repo <dir>
+```
+
+`approve` refuses unless the report is approved, `HEAD` is unchanged, nothing
+is unanswered, every file matches its reviewed hash and the index is empty;
+then it stages exactly the reviewed paths and records the index tree.
+`commit-flags` refuses if the index moved or any staged path has no author,
+and otherwise emits `AUTHOR_MODEL=` and `REVIEWER_MODEL=` lines for
+`git-commit`. Gate refusals exit 4.
+
 ### `profile_resolve.py [--repo D] [--profile P]`
 
 Resolves the TOML platform profile that keeps everything job-specific out of
@@ -119,14 +139,14 @@ undeterminable or worktree unsafe to remove.
 ## Related tooling
 
 These live in real skills and are called from there, not duplicated here:
-`tuicr/lib/tuicr_up.py` and `watch_up.py` for the review surface and its watch
-daemon, `git-worktree/` for worktree lifecycle, and `git-commit/commit.py` for
+`tuicr/lib/tuicr_up.py` and `feedback_server.py` for the review surface and its
+MCP feedback loop, `git-worktree/` for worktree lifecycle, and `git-commit/commit.py` for
 provenance-stamped commits.
 
 ## Testing
 
 ```bash
-cd .agents/skills/_toolkit
+cd skills/_toolkit
 for t in tests/test_*.py; do python3 "$t"; done
 ```
 

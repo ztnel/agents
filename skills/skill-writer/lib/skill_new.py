@@ -157,7 +157,7 @@ Next:
   2. Write the body, keeping it under 500 lines.
   3. Write lib/<entry>.py in Python — shell scripts are not accepted. Give it a
      '#!/usr/bin/env python3' shebang, chmod +x, and reuse
-     ~/.agents/skills/_lib/skillkit rather than re-solving portability.
+     skills/_lib/skillkit rather than re-solving portability.
   4. Gate on: python3 {Path(__file__).with_name('skill-lint.py')} {destination} --strict""")
     return 0
 

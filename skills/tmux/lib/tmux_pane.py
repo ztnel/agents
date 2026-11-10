@@ -10,7 +10,7 @@ Usage::
     tmux_pane.py list [--scope all|session|window] [--target T]
     tmux_pane.py open --cwd DIR [--window NAME | --split h|v [--size S]]
                       [--target PANE] [--env NAME]... [--expect CMD]
-                      [--timeout S] [--settle S] [--focus] -- COMMAND [ARG]...
+                      [--timeout S] [--settle S] -- COMMAND [ARG]...
     tmux_pane.py focus --pane PANE
     tmux_pane.py resize --pane PANE [--width W] [--height H]
     tmux_pane.py capture --pane PANE [--lines N]
@@ -116,8 +116,6 @@ def _cmd_open(args: argparse.Namespace) -> int:
         env=env,
     )
     described = _wait_ready(pane, args.expect, args.timeout, args.settle)
-    if args.focus:
-        tmuxio.focus_pane(pane)
     return _emit({"ready": True, **described})
 
 
@@ -183,7 +181,6 @@ def _parser() -> argparse.ArgumentParser:
     opening.add_argument("--expect", help="Process name that must appear in the pane's process tree.")
     opening.add_argument("--timeout", type=float, default=10.0)
     opening.add_argument("--settle", type=float, default=0.3, help="Seconds the pane must stay alive.")
-    opening.add_argument("--focus", action="store_true", help="Focus the pane once it is ready.")
     opening.add_argument("command", nargs=argparse.REMAINDER)
 
     for name, text in (("focus", "Focus a pane."), ("resize", "Resize a pane."),

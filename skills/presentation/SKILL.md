@@ -12,7 +12,9 @@ decisions. This skill does not define teaching or development policy.
 Closing a page ends discussion; it does not approve implementation, code or
 publication.
 
-The entry point is `lib/presentation.py` in this skill's directory (Python 3.11+,
+`$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
+The entry point is `$SKILL_DIR/lib/presentation.py` (Python 3.11+,
 stdlib only). Every command prints JSON. Pass the same document path to each.
 
 ## Workflow
@@ -21,15 +23,17 @@ Run this loop until the session is closed.
 
 1. **Build** the page: write `<topic>.md` in your session files folder, not the
    workspace (see *Authoring*).
-2. **Open** it → verify the JSON has a `url`; tell the human it is open. A tab
-   opens only when the server starts; later `open` calls reuse it without one, so
-   test with `--no-browser` and pass `--browser` only if the human closed the tab.
+2. **Open** it → verify the JSON has a `url`, then start waiting at once. The
+   first `open` starts the server; its tab opens when you first wait, so the
+   human never comments before you listen. Later calls reuse that tab. Pass
+   `--browser` only if the human closed the tab.
    ```bash
-   lib/presentation.py open <doc.md>
+   $SKILL_DIR/lib/presentation.py open <doc.md>
    ```
-3. **Wait** for comments, passing your concrete model id (shown to the human):
+3. **Wait** for comments, passing your concrete model id (shown to the human).
+   Prefer the MCP loop below; this CLI is the fallback:
    ```bash
-   lib/presentation.py wait <doc.md> --model <model-id> --timeout 300
+   $SKILL_DIR/lib/presentation.py wait <doc.md> --model <model-id> --timeout 300
    ```
    - `feedback`: answer every entry in `pending`. Each carries `thread`, the
      anchored `context` text and the human's `messages`.
@@ -38,12 +42,27 @@ Run this loop until the session is closed.
 4. **Reply** in the thread, then revise the document if the explanation was
    unclear or wrong. The page reloads on save; comments follow their text.
    ```bash
-   lib/presentation.py reply <doc.md> --model <model-id> --thread <id> --body "…"
+   $SKILL_DIR/lib/presentation.py reply <doc.md> --model <model-id> --thread <id> --body "…"
    ```
    Use `--body-file` for long or quoted text. Replies render `**bold**`, `*em*`,
    `` `code` ``, lists, fenced code and `$…$`/`$$…$$` math. Reply before editing so the
    human sees the answer, then say in the reply what you changed.
 5. Go to 3.
+
+**MCP loop (preferred).** After `open`, call `connect_review(doc)` on the
+`presentation-feedback` MCP server, then loop on
+`wait_for_feedback(review_id, author=<model-id>)`. Each batch holds ordered
+events: answer each non-`superseded` `message` with
+`reply(review_id, message_id, message_version, verdict, content, author, task)`
+(it answers the thread's current tail; `verdict` is `accepted` with a one-line
+`task`, `declined` or `answered`), skip `withdrawn`, and stop on `closure` —
+closure is not approval. Then `acknowledge_feedback(review_id, batch_id)`; an
+unacknowledged batch replays, also after a server restart, so never duplicate a
+reply. Revise the document as in step 4: presentation work is not batched, so
+apply accepted changes immediately.
+
+A server with no tab, bridge or agent request for 15 minutes exits on its own;
+threads persist and `open` resumes them. The bridge stops polling at closure.
 
 The green dot means an agent is blocked in `wait`; amber means it replied or
 stopped waiting in the last 10 minutes. Waiting keeps your turn busy, so stay

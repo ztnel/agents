@@ -1,7 +1,7 @@
 # `presentation/lib`
 
-Python 3.11+, standard library only. Shared primitives come from
-[`../../_lib/skillkit`](../../_lib/README.md).
+Python 3.11+, standard library only, except `feedback_server.py`. Shared
+primitives come from [`../../_lib/skillkit`](../../_lib/README.md).
 
 ## `presentation.py <command> <doc.md> …`
 
@@ -10,7 +10,7 @@ codes (`2` usage, `4` no server for the document).
 
 | Command | Contract |
 |---|---|
-| `open [--no-browser \| --browser] [--restart]` | Start or reuse the document's server; opens a tab only on start (`--browser` forces one). `--restart` replaces a running server on the same port and token, so open tabs reconnect without a new one. Returns `url`, `reused`, `pid` |
+| `open [--no-browser \| --browser] [--restart]` | Start or reuse the document's server; requests a tab only on start (`--browser` forces one), which the server opens when an agent first waits. `--restart` replaces a running server on the same port and token, so open tabs reconnect without a new one. Returns `url`, `reused`, `pid`, `browser` |
 | `wait --model M [--timeout S]` | Block 1–300 s; returns `status` (`feedback`, `timeout`, `closed`) and `pending` threads with `context`. Returns `closed` after the session ended even though the server has exited |
 | `read` | All threads with `context`, plus `pending` |
 | `reply --model M --thread T (--body \| --body-file)` | Append an agent message to a thread |
@@ -24,6 +24,16 @@ State lives in `$XDG_STATE_HOME/demystify/<hash-of-doc-path>/`:
 closed flag) and `server.log`.
 The legacy directory name preserves conversations from before the skill split.
 Session closure signals the end of discussion, never workflow approval.
+
+## `feedback_server.py`
+
+Stdio MCP server `presentation-feedback`, run from the plugin's `mcp.json` via
+`uv run --project skills/_lib` (needs `mcp`). Adds `connect_review(doc)` —
+requires a running `presentation.py open <doc>` — to the common tools from
+[`skillkit.feedback`](../../_lib/README.md#review-feedback-contract), using the
+server's local `/agent/*` routes. `reply` answers the thread's current human
+tail. While `wait_for_feedback` blocks, the viewer shows the agent as waiting.
+Closure is the session's closed flag; it never implies approval.
 
 ## `server.py`
 

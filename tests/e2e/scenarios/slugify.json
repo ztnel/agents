@@ -1,0 +1,35 @@
+{
+  "fixture": "strutils",
+  "prompt": "I want to add a slugify() function to strutils: lowercase, ASCII-fold accents, collapse non-alphanumerics into single hyphens, strip leading/trailing hyphens. Let's go through the normal developer workflow.",
+  "presentation": {
+    "comment": "Direct. One addition to the brief: slugify should take a keyword-only `separator: str = \"-\"` parameter so callers can choose the joiner. Otherwise agreed; go ahead.",
+    "answer": "Yes, agreed."
+  },
+  "tuicr": [
+    {
+      "comment": {
+        "file": "src/strutils/__init__.py",
+        "line_match": "def slugify",
+        "text": "Please add a unit test that covers a custom separator, for example separator=\"_\"."
+      }
+    },
+    {
+      "approve": true
+    }
+  ],
+  "expect": {
+    "commits": 1,
+    "paths": [
+      "src/strutils/__init__.py",
+      "tests/*"
+    ],
+    "acceptance": "slugify/acceptance.py",
+    "max_minutes": 20
+  },
+  "fake": {
+    "rounds": [
+      "slugify/solution/r1",
+      "slugify/solution/r2"
+    ]
+  }
+}

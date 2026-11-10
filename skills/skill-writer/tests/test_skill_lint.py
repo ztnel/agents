@@ -47,6 +47,21 @@ class SkillDocumentationTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_script_paths_must_be_skill_relative_and_defined(self):
+        cases = {
+            "Run `~/.agents/skills/example/lib/run.py`.": "hardcoded",
+            "Run `$SKILL_DIR/lib/run.py`.": "without defining",
+            "`$SKILL_DIR` is the directory containing this SKILL.md. "
+            "Run `$SKILL_DIR/lib/run.py`.": None,
+        }
+        for body, error in cases.items():
+            rep = skill_lint.Report("example")
+            skill_lint.check_script_paths(body, rep)
+            if error is None:
+                self.assertEqual(rep.errors, [], body)
+            else:
+                self.assertTrue(any(error in item for item in rep.errors), body)
+
     def test_scaffolder_does_not_generate_duplicate_readme(self):
         with tempfile.TemporaryDirectory() as root:
             result = subprocess.run(

@@ -78,6 +78,26 @@ def resolve(repo: str, session: str, comment_id: str, answer_id: str) -> None:
     paths.write_json_atomic(_state_path(repo, session), registry, indent=2)
 
 
+def answered(repo: str, session: str) -> set[str]:
+    """Ids of answered questions and their bound answers."""
+    registry = _read(repo, session)
+    if not registry:
+        return set()
+    pending = {item["id"] for item in unanswered(repo, session)}
+    return {
+        ident for comment_id, binding in registry.items() if comment_id not in pending
+        for ident in (comment_id, binding["answer_id"])
+    }
+
+
+def forget(repo: str, session: str, comment_ids: set[str]) -> None:
+    """Drop registered questions whose comments were deleted."""
+    registry = _read(repo, session)
+    kept = {key: value for key, value in registry.items() if key not in comment_ids}
+    if kept != registry:
+        paths.write_json_atomic(_state_path(repo, session), kept, indent=2)
+
+
 def unanswered(repo: str, session: str) -> list[dict]:
     registry = _read(repo, session)
     if not registry:

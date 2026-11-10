@@ -300,8 +300,8 @@ def pid_alive(pid: int) -> bool:
 def parent_pid(pid: int) -> int | None:
     """PPID of *pid*, or None if it cannot be determined.
 
-    Prefers ``/proc/<pid>/stat`` on Linux because ancestry is re-checked before
-    every wake injection and spawning ``ps`` there costs more than the check.
+    Prefers ``/proc/<pid>/stat`` on Linux because ancestry checks can run in
+    hot loops and spawning ``ps`` there costs more than the check.
     Falls back to ``ps``, which is specified by POSIX and present on macOS.
     """
     stat_path = Path(f"/proc/{pid}/stat")
