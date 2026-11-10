@@ -10,7 +10,7 @@ codes (`2` usage, `4` no server for the document).
 
 | Command | Contract |
 |---|---|
-| `open [--no-browser \| --browser] [--restart]` | Start or reuse the document's server; opens a tab only on start (`--browser` forces one). `--restart` replaces a running server on the same port and token, so open tabs reconnect without a new one. Returns `url`, `reused`, `pid` |
+| `open [--no-browser \| --browser] [--restart]` | Start or reuse the document's server; requests a tab only on start (`--browser` forces one), which the server opens when an agent first waits. `--restart` replaces a running server on the same port and token, so open tabs reconnect without a new one. Returns `url`, `reused`, `pid`, `browser` |
 | `wait --model M [--timeout S]` | Block 1–300 s; returns `status` (`feedback`, `timeout`, `closed`) and `pending` threads with `context`. Returns `closed` after the session ended even though the server has exited |
 | `read` | All threads with `context`, plus `pending` |
 | `reply --model M --thread T (--body \| --body-file)` | Append an agent message to a thread |

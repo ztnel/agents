@@ -12,6 +12,7 @@ a session opened any other way reports ``closed: null`` (unknown).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -23,13 +24,14 @@ from skillkit.feedback import (  # noqa: E402
     Inbox, Message, Review, Reviews, create_server, default_inbox, message, serve,
 )
 from skillkit.tuicrio import DEFAULT_IGNORE_TYPES  # noqa: E402
+from skillkit import workqueue  # noqa: E402
 import questions  # noqa: E402
-from tuicr_up import report_path  # noqa: E402
+from tuicr_up import anchor, anchor_key, report_path  # noqa: E402
 
 IGNORED = frozenset(DEFAULT_IGNORE_TYPES)
 
 
-async def command(argv: list[str]) -> object:
+async def output(argv: list[str]) -> bytes:
     proc = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
@@ -42,34 +44,51 @@ async def command(argv: list[str]) -> object:
         raise
     if proc.returncode:
         raise RuntimeError(f"{argv[0]} failed: {stderr.decode().strip()}")
-    return json.loads(stdout)
+    return stdout
 
 
-def anchor(item: dict) -> dict:
-    start = item.get("start_line") or 0
-    return {
-        "path": item.get("path") or "", "start_line": start,
-        "end_line": item.get("end_line") or start, "side": item.get("side") or "new",
-    }
-
-
-def anchor_key(item: dict) -> str:
-    return json.dumps(anchor(item), sort_keys=True)
+async def command(argv: list[str]) -> object:
+    return json.loads(await output(argv))
 
 
 class Tuicr:
     frontend = "tuicr"
     semantics = "positional: later replies at the same anchor answer earlier comments"
     closure_detection = True
+    policy = (
+        "Work waits for closure: reply accepted with a task to queue each change, "
+        "mirror the queue in your todo list, and edit nothing until the closure "
+        "event returns the queue. Then apply it and open a new review round."
+    )
 
     def __init__(self, repo: str, slug: str, session: Path):
         self.repo, self.slug, self.session = repo, slug, session
         self.identity = str(session)
+        self.queue_scope = workqueue.scope(repo, slug)
+
+    async def fingerprint(self) -> str:
+        """HEAD, status and dirty-file content: any edit to the tree changes it."""
+        git = ["git", "-C", self.repo]
+        digest = hashlib.sha256(await output([*git, "rev-parse", "HEAD"]))
+        status = await output([*git, "status", "--porcelain", "-z", "--untracked-files=all"])
+        digest.update(status)
+        for entry in status.split(b"\0"):
+            path = Path(self.repo, entry[3:].decode(errors="surrogateescape"))
+            if len(entry) > 3 and path.is_file():
+                digest.update(hashlib.sha256(path.read_bytes()).digest())
+        return digest.hexdigest()
 
     async def read(self) -> Review:
-        raw = await command([
-            "tuicr", "review", "comments", "--repo", self.repo, "--session", str(self.session),
-        ])
+        try:
+            raw = await command([
+                "tuicr", "review", "comments", "--repo", self.repo, "--session", str(self.session),
+            ])
+        except RuntimeError:
+            # Closing wipes settled comments and tuicr drops a session left empty,
+            # possibly before the close report lands; the report decides closure.
+            if self.session.exists():
+                raise
+            raw = []
         if not isinstance(raw, list):
             raise ValueError("tuicr comments must return a JSON array")
         registered = questions.registered_ids(self.repo, self.slug)
@@ -85,9 +104,13 @@ class Tuicr:
         ]
         report = report_path(self.repo, self.slug)
         closure = None
-        if report.is_file():
+        # An active session is a new round; its predecessor's report is stale.
+        if report.is_file() and not await active(self.repo, self.slug):
             verdict = json.loads(report.read_text())
-            closure = {"verdict": verdict.get("verdict"), "report": str(report)}
+            closure = {
+                "verdict": verdict.get("verdict"), "report": str(report),
+                "queued": verdict.get("queued", []),
+            }
         return Review(
             frontend=self.frontend, closed=True if closure else None, pending=pending,
             closure=closure, context={"slug": self.slug, "comments": raw},
@@ -111,6 +134,11 @@ class Tuicr:
         if not any(item["id"] == delivered["id"] for item in current.context["comments"]):
             raise RuntimeError("tuicr returned a reply but it is absent from this session")
         return delivered
+
+
+async def active(repo: str, slug: str) -> bool:
+    sessions = await command(["tuicr", "review", "list", "--repo", repo])
+    return any(item["slug"] == slug and item.get("active") for item in sessions)
 
 
 async def locate(repo: str, slug: str | None) -> tuple[str, Path]:

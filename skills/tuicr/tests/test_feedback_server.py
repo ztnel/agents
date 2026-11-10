@@ -30,6 +30,13 @@ class Isolated:
         })
         env.start()
         self.addCleanup(env.stop)
+        subprocess.run(["git", "init", "-q", self.root], check=True)
+        subprocess.run([
+            "git", "-C", self.root, "-c", "user.name=T", "-c", "user.email=t@example.com",
+            "commit", "-q", "--allow-empty", "-m", "base",
+        ], check=True)
+        # tuicr and the inbox keep state under the root; only edits count.
+        (self.root / ".git/info/exclude").write_text("*\n")
 
 
 @unittest.skipUnless(shutil.which("tuicr"), "native tuicr executable not installed")
@@ -70,9 +77,23 @@ class TuicrConformanceTest(Isolated, Conformance, unittest.IsolatedAsyncioTestCa
         for item in current["pending"]:
             await self.call(
                 client, "reply", review_id=review_id, message_id=item["id"],
-                message_version=item["version"], content="Ack", author="test-agent",
+                message_version=item["version"], verdict="answered", content="Ack",
+                author="test-agent",
             )
         await super().drain(client, review_id)
+
+
+    async def test_close_wipes_settled_comments_natively(self):
+        self.tuicr("add", "--session", self.session, "--type", "description",
+                   "--username", "model", "--", "What changed")
+        self.tuicr("add", "--session", self.session, "--type", "reply",
+                   "--username", "model", "--", "Answered: done")
+        await self.human_comment("Still open")
+        wiped = tuicr_up.wipe_settled(str(self.root), self.slug)
+        remaining = json.loads(self.tuicr("comments", "--session", self.slug, "--repo", self.root))
+        self.assertEqual(len(wiped), 2)
+        self.assertEqual(
+            sorted(item["content"] for item in remaining), ["Still open", "What changed"])
 
 
 class TuicrConnectorTest(Isolated, unittest.IsolatedAsyncioTestCase):
@@ -110,11 +131,59 @@ class TuicrConnectorTest(Isolated, unittest.IsolatedAsyncioTestCase):
 
     async def test_close_report_is_closure_detail_not_approval(self):
         report = tuicr_up.report_path(str(self.root), "slug")
-        paths.write_json_atomic(report, {"verdict": "incomplete", "approved": False})
+        queued = [{"message_id": "human", "task": "Fix it"}]
+        paths.write_json_atomic(report, {"verdict": "changes_queued", "approved": False, "queued": queued})
         with patch.object(feedback_server, "command", AsyncMock(return_value=[])):
             review = await self.connector.read()
         self.assertTrue(review.closed)
-        self.assertEqual(review.closure, {"verdict": "incomplete", "report": str(report)})
+        self.assertEqual(
+            review.closure, {"verdict": "changes_queued", "report": str(report), "queued": queued})
+
+    async def test_session_dropped_on_close_waits_for_the_report(self):
+        gone = AsyncMock(side_effect=RuntimeError("tuicr failed: No such file or directory"))
+        with patch.object(feedback_server, "command", gone):
+            review = await self.connector.read()
+        self.assertEqual((review.pending, review.closed), ([], None))
+        paths.write_json_atomic(tuicr_up.report_path(str(self.root), "slug"), {"verdict": "changes_queued"})
+        with patch.object(feedback_server, "command", gone), \
+                patch.object(feedback_server, "active", AsyncMock(return_value=False)):
+            self.assertTrue((await self.connector.read()).closed)
+        (self.root / "s.json").write_text("{}")
+        with patch.object(feedback_server, "command", gone), self.assertRaises(RuntimeError):
+            await self.connector.read()
+
+    async def test_report_from_an_earlier_round_is_stale_while_the_session_is_active(self):
+        report = tuicr_up.report_path(str(self.root), "slug")
+        paths.write_json_atomic(report, {"verdict": "approved", "approved": True})
+
+        async def tuicr(argv):
+            return [{"slug": "slug", "active": True}] if "list" in argv else []
+
+        with patch.object(feedback_server, "command", AsyncMock(side_effect=tuicr)):
+            review = await self.connector.read()
+        self.assertIsNone(review.closed)
+        self.assertIsNone(review.closure)
+
+    async def test_fingerprint_moves_with_any_edit_to_the_tree(self):
+        (self.root / ".git/info/exclude").write_text("")
+        tracked = self.root / "a.py"
+        tracked.write_text("one\n")
+        first = await self.connector.fingerprint()
+        self.assertEqual(await self.connector.fingerprint(), first)
+        tracked.write_text("two\n")
+        second = await self.connector.fingerprint()
+        self.assertNotEqual(second, first)
+        (self.root / "new.py").write_text("")
+        self.assertNotEqual(await self.connector.fingerprint(), second)
+
+
+class InboxLocationTest(unittest.TestCase):
+    def test_bridge_and_launcher_share_the_queue_database(self):
+        # tuicr_up.py runs in the human's terminal and never sees the MCP env.
+        config = json.loads((Path(__file__).resolve().parents[3] / "mcp.json").read_text())
+        env = config["mcpServers"]["tuicr-feedback"].get("env", {})
+        self.assertNotIn("FEEDBACK_INBOX", env)
+        self.assertFalse({"XDG_STATE_HOME", "HOME"} & env.keys())
 
 
 if __name__ == "__main__":

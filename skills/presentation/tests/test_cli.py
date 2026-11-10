@@ -40,6 +40,20 @@ class PresentationCliTest(unittest.TestCase):
         self.assertTrue(presentation.healthy(presentation.load(self.doc)))
         return opened
 
+    def test_tab_opens_only_once_the_agent_waits(self):
+        opened_log = self.directory / "opened.txt"
+        browser = self.directory / "browser.sh"
+        browser.write_text(f'#!/bin/sh\necho "$1" >> "{opened_log}"\n')
+        browser.chmod(0o755)
+        with patch.dict(os.environ, {"BROWSER": str(browser)}):
+            opened = self.cli("open", str(self.doc))
+            self.addCleanup(presentation.proc.terminate, opened["pid"])
+            self.assertEqual(opened["browser"], "opens when you wait")
+            self.assertFalse(opened_log.exists(), "no tab before an agent listens")
+            for _ in range(2):
+                self.cli("wait", str(self.doc), "--model", "test-model", "--timeout", "1")
+        self.assertEqual(opened_log.read_text().split(), [opened["url"]])
+
     def test_moved_cli_reuses_and_reopens_saved_conversation(self):
         opened = self.open()
         reused = self.cli("open", str(self.doc), "--no-browser")

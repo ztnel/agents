@@ -13,10 +13,11 @@ no way to notice. This skill is the feedback loop that absence creates.
 Owns `SKILL.md` (agent-owned capability). The `agents-md` skill owns `AGENTS.md`
 (human-owned context). No overlap.
 
-Scripts live next to this file:
+Scripts (see below). `$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
 
-- `~/.agents/skills/skill-writer/lib/skill-lint.py` — the validator (read-only)
-- `~/.agents/skills/skill-writer/lib/skill_new.py` — the scaffolder
+- `$SKILL_DIR/lib/skill-lint.py` — the validator (read-only)
+- `$SKILL_DIR/lib/skill_new.py` — the scaffolder
 
 ## Python only
 
@@ -32,7 +33,7 @@ stop a skill loading, and `--list-names` must keep reporting it (see *Prove it l
 
 ### Shared code lives in `_lib/skillkit`
 
-`~/.agents/skills/_lib/` is a **shared package, not a skill** — it has no `SKILL.md` and
+`$SKILL_DIR/../_lib/` is a **shared package, not a skill** — it has no `SKILL.md` and
 the linter skips it. It holds the primitives every skill needs (`proc`, `cli`, `paths`,
 `tmuxio`, `tuicrio`, `gitio`, `lock`, `errors`, `feedback`), so a portability fix lands
 once instead of once per skill. Read `_lib/README.md` before writing a new entry point.
@@ -77,7 +78,7 @@ failures — use it for new skills, where there is no legacy to excuse.
 ## Workflow: create a skill
 
 ```bash
-~/.agents/skills/skill-writer/lib/skill_new.py <skill-name>
+$SKILL_DIR/lib/skill_new.py <skill-name>
 ```
 
 Creates a compliant skeleton — `SKILL.md` and an empty `lib/` — then
@@ -96,14 +97,14 @@ unedited skeleton must never ship.
 ## Workflow: validate
 
 ```bash
-# every skill in ~/.agents/skills
-~/.agents/skills/skill-writer/lib/skill-lint.py
+# every skill in this skills root
+$SKILL_DIR/lib/skill-lint.py
 
 # one skill, held to the full standard
-~/.agents/skills/skill-writer/lib/skill-lint.py ~/.agents/skills/<name> --strict
+$SKILL_DIR/lib/skill-lint.py <skill-dir> --strict
 
 # machine-readable
-~/.agents/skills/skill-writer/lib/skill-lint.py --json
+$SKILL_DIR/lib/skill-lint.py --json
 ```
 
 Run the full sweep after editing *any* skill. A single sweep is cheap and catches the
@@ -153,7 +154,7 @@ runtime *actually* loaded — `copilot skill list` is the loader's own answer:
 
 ```bash
 cd ~   # project skills are discovered relative to the working directory
-diff <(~/.agents/skills/skill-writer/lib/skill-lint.py --list-names | sort) \
+diff <($SKILL_DIR/lib/skill-lint.py --list-names | sort) \
      <(copilot skill list | awk '/^Project skills:/{f=1;next} /^[A-Z].*skills:/{f=0} f && /^  [a-z0-9-]+ - /{print $1}' | sort)
 ```
 

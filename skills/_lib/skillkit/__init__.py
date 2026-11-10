@@ -12,9 +12,9 @@ Target platforms: Linux, macOS and WSL. The rules that keep that true:
   Those tools differ between GNU and BSD userland and are the single largest
   source of macOS breakage.
 * Never rely on a shell to split, quote or glob. Argument vectors are lists.
-* ``tmux`` is assumed as the review-window launcher; it has no native Windows
-  port, so native Windows is out of scope by design. WSL is the supported path
-  there.
+* ``tmux`` backs the ``tmux`` skill's pane management; application skills must
+  not require it. It has no native Windows port, so native Windows is out of
+  scope by design. WSL is the supported path there.
 * Everything is stdlib-only except :mod:`~skillkit.feedback` (and its
   conformance suite), which needs ``mcp`` pinned in ``_lib/pyproject.toml``;
   run it with ``uv run --project skills/_lib``.

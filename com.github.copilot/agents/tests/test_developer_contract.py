@@ -25,16 +25,17 @@ class DeliveryContractTest(unittest.TestCase):
         )
 
     def test_only_reported_paths_are_staged(self) -> None:
-        self.assertIn("stage exactly the paths in `marks.files`", self.text)
-        self.assertIn("Never use `git add -A`, `git add .`", self.text)
+        self.assertIn("ledger.py approve --repo <dir> --report", self.text)
+        self.assertIn("stages exactly `marks.files`", self.text)
+        self.assertIn("Never stage with `git add -A`, `git add .`", self.text)
         self.assertRegex(
             self.text,
             re.compile(r"Unrelated\s+worktree changes remain unstaged"),
         )
 
     def test_stale_or_unattributed_work_is_refused(self) -> None:
-        self.assertRegex(self.text, re.compile(r"any change\s+since the report"))
-        self.assertIn("any staged path has no author row", self.text)
+        self.assertIn("ledger.py commit-flags --repo <dir>", self.text)
+        self.assertRegex(self.text, re.compile(r"any staged path\s+has no author, or the index or `HEAD` changed since approval"))
 
     def test_push_uses_only_configured_upstream(self) -> None:
         self.assertIn("push to the branch's configured upstream", self.text)

@@ -100,7 +100,8 @@ class Conformance:
                 target = replay["batch"]["events"][0]["message"]
                 await self.call(
                     client, "reply", review_id=review_id, message_id=target["id"],
-                    message_version=target["version"], content="Answer", author="test-agent",
+                    message_version=target["version"], verdict="answered", content="Answer",
+                    author="test-agent",
                 )
                 current = await self.call(client, "read_review", review_id=review_id)
                 self.assertEqual(current["pending"], [])
@@ -108,8 +109,9 @@ class Conformance:
                     client, "acknowledge_feedback", review_id=review_id,
                     batch_id=replay["batch"]["id"],
                 )
-                withdrawn = await self.call(client, "receive_feedback", review_id=review_id)
-                self.assertEqual([e["kind"] for e in withdrawn["batch"]["events"]], ["withdrawn"])
+                # An answered message settles; it is not withdrawn.
+                settled = await self.call(client, "receive_feedback", review_id=review_id)
+                self.assertIsNone(settled.get("batch"))
                 await self.drain(client, review_id)
 
                 await self.close_natively()

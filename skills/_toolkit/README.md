@@ -62,11 +62,31 @@ Globs are git-style: `**` spans separators, `*` and `?` do not, and a trailing
 Exits: `0` all in scope, `2` usage, `3` not a repository or unreadable
 baseline, `4` out-of-scope changes found.
 
+### `ledger.py {author,reviewer,approve,commit-flags,committed}`
+
+The developer's provenance and commit gate, kept in
+`$XDG_STATE_HOME/developer/ledger.sqlite` and keyed by repository root.
+
+```bash
+ledger.py author   --repo <dir> --model <id> <path|AUTHORED=path>...
+ledger.py reviewer --repo <dir> --model <id> <path>...
+ledger.py approve  --repo <dir> --report <tuicr close report>
+ledger.py commit-flags --repo <dir>
+ledger.py committed    --repo <dir>
+```
+
+`approve` refuses unless the report is approved, `HEAD` is unchanged, nothing
+is unanswered, every file matches its reviewed hash and the index is empty;
+then it stages exactly the reviewed paths and records the index tree.
+`commit-flags` refuses if the index moved or any staged path has no author,
+and otherwise emits `AUTHOR_MODEL=` and `REVIEWER_MODEL=` lines for
+`git-commit`. Gate refusals exit 4.
+
 ### `profile_resolve.py [--repo D] [--profile P]`
 
 Resolves the TOML platform profile that keeps everything job-specific out of
 the workflow: branch naming, ticket ids and URLs, ticket fetch, PR templates,
-PR open command, and the monthly credit cap. Search order is `<repo>/.dev.toml`,
+and PR open command. Search order is `<repo>/.dev.toml`,
 then `~/.config/dev/profile.toml`, then `templates/profiles/default.toml`.
 
 Also the importable helper the other scripts use — they call `load_profile()`
@@ -103,23 +123,6 @@ one; the script resolves it correctly, so do not hand-edit it.
 Exits: `2` usage, `3` worktree missing, `4` `PR.md` exists (use `--force`),
 `5` no template and the fallback is missing.
 
-### `budget_check.py [--cap N] [--month YYYY-MM] [--by-model]`
-
-Reports month-to-date AI credit spend against the cap, reading the CLI's own
-session store. With `--by-model`, breaks spend down per model, busiest first —
-per-turn cost varies several-fold between models, which is the single most
-useful number when choosing who to dispatch.
-
-**A report, not a gate: it always exits 0**, including when over cap, so it can
-never block work mid-feature. It writes a `WARN:` line to stderr instead.
-Deciding what to do about a warning belongs to the human.
-
-Unit assumption: 1 AIC = 1 AIU = 1e9 `nano_aiu`. If a billing page disagrees,
-correct it with `--cap` or the profile's `[budget].cap_aic` rather than by
-editing the script — the comparison only needs both numbers in the same unit.
-
-Exits: `2` usage, `3` store missing or has no usage table.
-
 ### `teardown.py --worktree D --branch B [--merged] [--prune-remote]`
 
 Retires a merged feature's worktree and local branch; `--prune-remote` also
@@ -143,7 +146,7 @@ provenance-stamped commits.
 ## Testing
 
 ```bash
-cd .agents/skills/_toolkit
+cd skills/_toolkit
 for t in tests/test_*.py; do python3 "$t"; done
 ```
 

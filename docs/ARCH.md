@@ -14,6 +14,7 @@ to exactly `1.0.0`; the manifest's `version` tracks plugin releases separately.
 | `mcp.json` | GitHub MCP endpoint and skill-owned review-feedback servers |
 | `skills/<name>/SKILL.md` | Discoverable skill contract and activation description |
 | `skills/_lib/skillkit/` | Shared Python primitives for processes, paths, Git, tmux, review sessions, and the review-feedback contract |
+| `skills/tmux/` | Terminal pane management; application skills expose commands and custom agents choose where they run |
 | `com.github.copilot/agents/` | Copilot CLI custom agents that compose skills into workflows |
 | `tests/` | Repository regression and package-discovery harnesses |
 

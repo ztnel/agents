@@ -3,9 +3,8 @@
 # This is an example, not a default. Copy it to `<repo>/.dev.toml` or
 # `~/.config/dev/profile.toml`.
 #
-# It exists to prove the same skill retargets with a config change alone:
-# GitHub issue ids are bare numbers, so the branch pattern and ticket URL look
-# nothing like the Jira example, yet every dev script is unchanged.
+# It demonstrates bare issue-number configuration without changing the dev
+# scripts.
 
 name = "example-github"
 
@@ -33,6 +32,3 @@ open = [
     "--title", "{title}",
     "--body-file", "{body_file}",
 ]
-
-[budget]
-cap_aic = 7000

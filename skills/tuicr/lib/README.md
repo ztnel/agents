@@ -63,21 +63,20 @@ and lists the available comment ids when `--to` names an unknown one.
 
 ### `tuicr_up.py [directory]`
 
-Launches tuicr in a new tmux window over a freshly-resolved revset, focuses
-it, prints `Review session: <slug>`, deletes any stale close report for that
-session, and blocks until tuicr exits. Run it as an attached background
-command. It then evaluates review marks against the unchanged `HEAD`, checks
-explicitly registered questions to the human, and persists the JSON verdict
-(`approved`/`incomplete`/`aborted`) to
-`$XDG_STATE_HOME/tuicr/reviews/<hash>.json` (`report_path()`), which
-`feedback_server.py` delivers as the closure event. A killed or failed window
-is always `aborted`.
-The launcher leaves tuicr attached to the pane's terminal, so `e` can open a
-terminal editor such as Neovim. Exported instructions use tuicr's clipboard
-path rather than `--stdout` capture.
-New windows receive the caller's `EDITOR` and `VISUAL` when set, without
-changing tmux's global environment. Unset variables retain tmux defaults;
-existing review windows are not modified.
+Runs tuicr in the foreground of the current terminal over a freshly-resolved
+revset, deletes any stale close report for the active session, and blocks until
+tuicr exits. It then evaluates review marks against the unchanged `HEAD`, checks
+explicitly registered questions to the human, deletes settled comments
+(`settled()`: replies, what they answer and answered questions; descriptions,
+review notes and anything unanswered stay), and persists the JSON verdict
+(`approved`/`incomplete`/`aborted`) to `$XDG_STATE_HOME/tuicr/reviews/<hash>.json`
+(`report_path()`), which `feedback_server.py` delivers as the closure event. A
+killed or failed tuicr is always `aborted`.
+
+It opens no terminals: the invoking workflow chooses where it runs. tuicr
+inherits the terminal, so `e` can open the editor named by that terminal's
+`EDITOR`/`VISUAL`. Exported instructions use tuicr's clipboard path rather than
+`--stdout` capture.
 
 Reviewed regular files carry `content_sha256` fingerprints in `marks.files`.
 Consumers verify their own inputs against those fingerprints before acting.
@@ -102,18 +101,18 @@ skill-owned state under `XDG_STATE_HOME/tuicr/questions`, keyed by checkout
 and session; persisted tuicr sessions and human marks are never modified.
 Registered questions are never pending feedback, but still block approval.
 
-Configured by environment, not flags: `TUICR_WINDOW_NAME` (default `tuicr`),
-`TUICR_BASE_REF` (default: **the remote's own default branch**, never a
+Configured by environment: `TUICR_BASE_REF` (default: **the remote's own default branch**, never a
 hardcoded name), `TUICR_HEAD_REF` (default `HEAD`), `TUICR_REMOTE` (default
 `origin`).
 
+If the launcher is already reviewing that checkout (a per-checkout pidfile under
+`XDG_STATE_HOME/tuicr/running`), it exits 0 instead of running a second tuicr.
 Persisted sessions are reused across review cycles so unchanged human review
 marks survive. tuicr owns mark invalidation when file content changes; callers
 must not move, replace, delete, or edit session files to force a refresh.
 
-Refuses (exit 1) when tuicr is missing, the target is not a git repo, or it is
-not running inside tmux. Exits 0 without acting if a tuicr pane is already open
-on that same checkout — scoped per-checkout so two repositories can be reviewed
+Refuses (exit 1) when tuicr is missing or the target is not a git repo. The
+running-review check is scoped per checkout so two repositories can be reviewed
 at once.
 
 ### `refresh_review_refs.py [--repo D] [--base R] [--head R] [--remote R] [--no-ff]`
@@ -146,10 +145,16 @@ active session) to the common tools from
 `read_review`, `receive_feedback`, `acknowledge_feedback`, `reply`,
 `wait_for_feedback`. Pending comments exclude agent `reply`, `description`,
 and `review-note` types, registered questions, and comments with a later reply
-at the same anchor. `reply` posts a `--type reply` at the original's anchor.
-Closure is the close report: `closure = {"verdict", "report"}` for sessions
-launched by `tuicr_up.py`; otherwise `closed` is `null` (unknown). Closure
-never implies approval — read the report.
+at the same anchor. `reply` posts a `--type reply` at the original's anchor,
+prefixed with its verdict; an `accepted` task is labelled **Queued** and queued under `(repo, slug)` in
+the inbox database (`skillkit.workqueue`). While the review is open, `wait` and
+`reply` refuse once HEAD, `git status` or a dirty file's content changes;
+`connect_review` re-baselines. Closure is the close report: `closure =
+{"verdict", "report", "queued"}` for sessions launched by `tuicr_up.py`,
+ignored while the session is active again (a new round);
+otherwise `closed` is `null` (unknown). `tuicr_up.py` reports
+`changes_queued` (never approved) while the queue is non-empty and archives it
+when the next round opens. Closure never implies approval — read the report.
 
 ## Design criteria
 

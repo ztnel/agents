@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.0] - Unreleased
 
+### Added
+- `tmux` skill: list, open, verify, focus, resize, capture and close panes by exact pane ID, with JSON output and explicit exit codes when tmux is missing.
+- End-to-end harness in `tests/e2e`: a scripted human drives the developer workflow through presentation and tuicr, then deterministic assertions and a hidden acceptance test judge the pushed result. CI runs it with a scripted agent on every PR and with the developer agent on gpt-6-luna nightly or on demand.
+
 ### Changed
+- Presentation opens its tab on the agent's first wait, so the human never comments before the agent listens. A tuicr close report from an earlier round is ignored while the session is active again.
+- Closing a tuicr review deletes settled comments (replies, what they answer and answered questions), whose anchors go stale once the work lands. Descriptions, review notes and unanswered comments remain.
+- The tuicr feedback server no longer fails when tuicr drops a session emptied by the close-time wipe before the close report is written.
+- Replying to a feedback message no longer produces a `withdrawn` event; only the human removing or resolving a message does. The inbox records answered messages.
+- tuicr 0.28 or newer is required; `tuicr_up.py` warns on older versions, which hide unsaved reviews from agents.
+- `tuicr_up.py` no longer opens tmux windows. It runs tuicr in the current terminal, takes the session to wake as `--cli-session`, and keeps the close report when no wake is possible. The developer agent opens it in a pane through the `tmux` skill, or gives the human the command when tmux is unavailable. `TUICR_WINDOW_NAME` is removed.
 - Skill authoring no longer requires or scaffolds duplicate READMEs; `SKILL.md` is the capability document. Removed the presentation README.
 - Split `demystify` into the standalone `presentation` skill and the `agents:demystifier` custom agent. Invoke `skills/presentation/lib/presentation.py`; the old skill and entry point are removed.
 - Presentation retains rendering, anchored comments, live updates, PDF export and saved conversations. Invoking agents own content and workflow policy; page closure is not approval.

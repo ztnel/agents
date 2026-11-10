@@ -32,6 +32,8 @@ MAX_STATE = 2000
 WAIT_MAX = 300
 STATE_WAIT = 25
 WORKING_WINDOW = 600
+#: Exit after this long with no tab, bridge or agent request; threads persist, `open` resumes.
+IDLE_EXIT = 900
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 # Widgets run agent-authored scripts in an opaque-origin sandbox: no network, no access to the page,
@@ -73,6 +75,8 @@ class Session:
         data = json.loads(store.read_text()) if store.exists() else {}
         self.threads: list[dict] = data.get("threads", [])
         self.closed = False
+        #: Called as an agent starts waiting; reveals a surface held back until then.
+        self.on_listen = lambda: None
         self.reload()
 
     # -- persistence -------------------------------------------------------
@@ -220,6 +224,7 @@ class Session:
         return {"state": "offline", "models": [self.last_agent["model"]] if self.last_agent else []}
 
     def wait(self, model: str, timeout: float) -> dict:
+        self.on_listen()
         deadline = time.monotonic() + max(1.0, min(float(timeout), WAIT_MAX))
         with self.cond:
             self.waiters[model] = self.waiters.get(model, 0) + 1
@@ -283,6 +288,29 @@ class Server(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", port), Handler)
         self.origin = f"http://127.0.0.1:{self.server_port}"
         self.stop = threading.Event()
+        self.activity = threading.Lock()
+        self.in_flight = 0
+        self.last_request = time.monotonic()
+
+    def finish_request(self, request, client_address) -> None:
+        with self.activity:
+            self.in_flight += 1
+        try:
+            super().finish_request(request, client_address)
+        finally:
+            with self.activity:
+                self.in_flight -= 1
+                self.last_request = time.monotonic()
+
+    def reap_when_idle(self, idle: float) -> None:
+        """Stop once nothing has been attached for *idle* seconds; never marks the session closed."""
+        while not self.stop.wait(min(idle, 30) / 4):
+            with self.activity:
+                quiet = not self.in_flight and time.monotonic() - self.last_request >= idle
+            if quiet:
+                self.stop.set()
+                self.shutdown()
+                return
 
     def shutdown_soon(self, delay: float = 1.5) -> None:
         def later() -> None:
@@ -386,11 +414,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": str(exc)})
 
 
-def serve(doc: Path, store: Path, token: str, port: int = 0, ready=None) -> Server:
-    """Build a server and its document watcher; the caller runs ``serve_forever``."""
+def serve(doc: Path, store: Path, token: str, port: int = 0, ready=None,
+          idle: float = IDLE_EXIT) -> Server:
+    """Build a server, its document watcher and idle reaper; the caller runs ``serve_forever``."""
     session = Session(doc, store)
     server = Server(session, token, port)
     threading.Thread(target=session.watch, args=(server.stop,), daemon=True).start()
+    threading.Thread(target=server.reap_when_idle, args=(idle,), daemon=True).start()
     if ready:
         ready(server)
     return server

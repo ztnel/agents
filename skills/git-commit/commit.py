@@ -211,7 +211,7 @@ def main(argv: list[str]) -> int:
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
     print()
     print(f"Committed {short} on {branch}.")
-    print("Not pushed — pushing is a separate, human-instructed step.")
+    print("Not pushed. Pushing is the calling workflow's decision.")
     return 0
 
 

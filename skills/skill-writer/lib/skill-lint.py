@@ -384,6 +384,16 @@ def check_placeholders(text, rep):
                  f"the skeleton was scaffolded but never filled in")
 
 
+def check_script_paths(body, rep):
+    """Script paths must resolve wherever the skill is installed."""
+    if ".agents/skills/" in body:
+        rep.error("hardcoded '.agents/skills/' path; plugin installs live elsewhere. "
+                  "Write $SKILL_DIR/<path> and define it")
+    if "$SKILL_DIR" in body and "`$SKILL_DIR` is" not in body:
+        rep.error("uses $SKILL_DIR without defining it; add "
+                  "'`$SKILL_DIR` is the directory containing this SKILL.md.'")
+
+
 def check_layout(skill_dir, rep):
     for root, dirs, files in os.walk(skill_dir):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
@@ -525,6 +535,7 @@ def lint_skill(skill_dir):
 
     check_frontmatter(data, frontmatter_text, rep)
     check_body(body, rep)
+    check_script_paths(body, rep)
     check_placeholders(text, rep)
     check_layout(skill_dir, rep)
     check_language(skill_dir, rep)

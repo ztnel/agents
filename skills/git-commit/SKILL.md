@@ -14,8 +14,8 @@ produced and approved the change:
 - the **human approver** (local git identity), and
 - the **reviewers** (the human approver, plus any number of agent reviewers).
 
-The script lives next to this file. Resolve it as
-`~/.agents/skills/git-commit/commit.py`.
+The script is `$SKILL_DIR/commit.py`. `$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
 
 ## Commit message format
 
@@ -57,7 +57,7 @@ Reviewed-by: <name> <email>, Copilot (<reviewer-1>) <...>, Copilot (<reviewer-2>
 ```bash
 # After the human has staged exactly what they want committed and approved it:
 git add <paths>      # the human (or you, at their direction) stages the changes
-~/.agents/skills/git-commit/commit.py \
+$SKILL_DIR/commit.py \
   --description "Add CAN bus timeout guard to the inverter driver" \
   --author-model "<model-that-wrote-the-code>" \
   --reviewer-model "<agent-reviewer-model>" \
@@ -67,11 +67,14 @@ git add <paths>      # the human (or you, at their direction) stages the changes
 With no agent reviewer (human review only) — still records review:
 
 ```bash
-~/.agents/skills/git-commit/commit.py \
+$SKILL_DIR/commit.py \
   --description "Fix off-by-one in telemetry ring buffer" \
   --author-model "claude-opus-4.8" \
   --confirm-reviewed
 ```
+
+These four flags are all a commit needs: repeat `--author-model` and
+`--reviewer-model` once per distinct model, in any order.
 
 ## Constraints
 
@@ -80,12 +83,12 @@ With no agent reviewer (human review only) — still records review:
   confirmed they reviewed the staged changes. When asked to commit, first ask
   the human whether they have reviewed the changes; if the human is unavailable,
   **stop and wait** — do not commit.
-- **Never auto-push.** This skill only commits. Pushing is a separate,
-  human-instructed step. The script never pushes and never force-pushes.
+- **Never pushes.** This skill only commits; the script never pushes or
+  force-pushes. Whether and where to push is the calling workflow's decision.
 - **Never stages anything.** The human stages exactly what they want committed
   (`git add`). The script commits only what is already staged; if nothing is
   staged, nothing is committed.
 
 ## Script
 
-See `README.md` for the full `commit.py` argument contract and behaviour.
+`README.md` covers exit codes and edge cases; a normal commit does not need it.

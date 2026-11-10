@@ -25,14 +25,15 @@ splitting cannot go wrong.
 
 ### Scope: Linux, macOS, WSL
 
-`tmux` is assumed as the review-window launcher. It has no native Windows
-port, so **native Windows is out of scope by design**; WSL is the supported
-path there. Nothing else in this package is POSIX-bound, so if that dependency
-ever changes, the remaining surface is already portable.
+The `tmux` skill uses `tmux` for pane management; application skills must not
+require it to do their work, and nothing sends keystrokes into a pane. It has no
+native Windows port, so **native Windows is out of scope by design**; WSL is the
+supported path there. Nothing else in this package is POSIX-bound, so if that
+dependency ever changes, the remaining surface is already portable.
 
 ## Importing
 
-Entry points live at `~/.agents/skills/<skill>/lib/<name>.py`, so `_lib` is
+Entry points live at `skills/<skill>/lib/<name>.py`, so `_lib` is
 always two levels up. Start each one with:
 
 ```python
@@ -47,10 +48,10 @@ Set `SKILLS_ROOT` to override the location when a skill is vendored elsewhere.
 
 | Module | Responsibility |
 | --- | --- |
-| `proc` | `run()`, `detach()`, `require()`, PID liveness and ancestry |
+| `proc` | `run()`, `detach()`, `require()`, PID liveness, ancestry and descendants |
 | `cli` | `==>` / `WARN:` / `ERROR:` output, `KEY=VALUE` metadata, `run_main()` |
 | `paths` | XDG dirs, local scratch paths, `short_hash()`, atomic writes, tolerant JSON reads |
-| `tmuxio` | Panes, windows, buffers, hex key delivery, focus reporting |
+| `tmuxio` | Exact-ID pane management for the `tmux` skill; no keystroke injection |
 | `tuicrio` | Typed `tuicr` client: `Anchor`, `Comment`, `reply_to()` |
 | `gitio` | Typed `git` wrapper, incl. `default_remote_branch()` |
 | `lock` | `PidFile` singleton guard, compatible with the shell pidfile format |
@@ -58,6 +59,7 @@ Set `SKILLS_ROOT` to override the location when a skill is vendored elsewhere.
 | `approval` | Provider-neutral `agents.approval/v1` receipts and current workspace/file verification |
 | `feedback` | Shared review-feedback MCP contract (needs `mcp`; see below) |
 | `feedback_conformance` | Conformance suite every feedback connector must pass |
+| `workqueue` | Accepted review work queued until closure, in the feedback inbox database |
 
 ## Review-feedback contract
 
@@ -66,8 +68,12 @@ Set `SKILLS_ROOT` to override the location when a skill is vendored elsewhere.
 inbox, and the common tools `read_review`, `receive_feedback`,
 `acknowledge_feedback`, `reply` and `wait_for_feedback`. A skill adds only its
 `connect_review` tool and a `Connector`. One outstanding batch per review
-replays until acknowledged; reads and replies never acknowledge; closure never
-implies approval.
+replays until acknowledged; reads and replies never acknowledge; a message
+the agent answered settles without a `withdrawn` event; closure never
+implies approval. Every `reply` carries a verdict (`accepted` with a task,
+`declined`, `answered`). A connector that defines `queue_scope`, `policy` and
+`fingerprint()` batches work until closure: accepted tasks go to `workqueue`,
+and `wait`/`reply` refuse once the work tree changes while the review is open.
 
 `feedback_conformance.py` is a test mixin every connector must pass against its
 real frontend. These two modules need `mcp`, pinned in `pyproject.toml`; run

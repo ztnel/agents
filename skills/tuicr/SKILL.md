@@ -1,6 +1,6 @@
 ---
 name: tuicr
-description: "Read comments and human-owned review marks in tuicr code-review sessions, open review windows in tmux, and run a live feedback loop through the tuicr-feedback MCP server. Includes contracts for answering every comment before acting and for interpreting the deterministic close report without setting marks. Use when opening a review for a human, reading or replying to review comments, waiting for review feedback, checking review completion, or handling a tuicr review closure event."
+description: "Read comments and human-owned review marks in tuicr code-review sessions, run a review in any terminal, and run a live feedback loop through the tuicr-feedback MCP server. Includes contracts for answering every comment before acting and for interpreting the deterministic close report without setting marks. Use when opening a review for a human, reading or replying to review comments, waiting for review feedback, checking review completion, or handling a tuicr review closure event."
 ---
 
 # tuicr review workflow
@@ -11,30 +11,31 @@ comments, and posts replies. The `tuicr-feedback` MCP server closes the loop
 by delivering pending comments and the review's closure as durable batches, so
 the human never has to copy anything out of the TUI.
 
-Scripts live in this skill's `lib/`. Resolve the dir as
-`~/.agents/skills/tuicr/lib`. They need `tuicr`, `git`, `tmux` and `python3`
-(3.8+, stdlib only; `feedback_server.py` also needs `mcp`, provided by the
-plugin's `uv run --project skills/_lib`), and run on Linux, macOS and WSL —
-`tmux` has no native Windows port, so on Windows use WSL. See [`lib/README.md`](lib/README.md) for
+Scripts live in `$SKILL_DIR/lib`. `$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
+They need `tuicr`, `git` and `python3` (3.8+,
+stdlib only; `feedback_server.py` also needs `mcp`, provided by the plugin's
+`uv run --project skills/_lib`), and run on Linux, macOS and WSL. This skill
+does not open or manage terminals; the invoking workflow decides where the
+review runs. See [`lib/README.md`](lib/README.md) for
 each script's contract and exit codes.
 
 ## Non-negotiables
 
-1. **Close the loop in tuicr.** Whenever you act on a comment, post a threaded
-   `--type reply` *before* you report the work done, anchored to that comment's
-   **exact** `path`, `start_line`, `end_line` and `side` — threading is
-   positional, so an approximate anchor does not thread. A chat summary is not a
-   substitute — the human triages in tuicr. See
-   [Replying](#replying-to-existing-comments).
+1. **Close the loop in tuicr.** Answer every comment with the feedback
+   server's `reply` and a verdict *before* any work; work waits for the human
+   to close the review. A chat summary is not a substitute — the human triages
+   in tuicr. See the [Feedback contract](#feedback-contract).
 2. **Open a review without being asked.** Whenever you produce changes a human
-   needs to review, proactively open a tuicr window on them and say it is ready.
-   The only exception is an explicit "no review window for this one".
-3. **Refresh branch refs first.** Before opening any branch-based review, fetch
-   and resolve against fresh remote refs via
-   [`lib/refresh_review_refs.py`](#opening-a-review). Never review a stale local
-   base. Fixed commit-SHA ranges need no refresh.
-4. **The feedback loop is local-only.** While handling feedback an agent may
-   read comments, make **unstaged** edits, and post **local draft** replies. It
+   needs to review, proactively start a tuicr review on them and say it is ready.
+   The only exception is an explicit "no review for this one".
+3. **Never review a stale base.** `tuicr_up.py` refreshes branch refs itself.
+   Only a revset you build yourself needs
+   [`refresh_review_refs.py`](#building-a-revset-yourself). Fixed commit-SHA
+   ranges need no refresh.
+4. **The feedback loop is local-only.** An agent may read comments, post
+   **local draft** replies, and, once the review closes, make **unstaged**
+   edits. It
    must never stage, commit, push, or sync to a remote forge. The human's review
    gate depends on this. Committing happens **outside** the loop, after the
    human has approved and the review is over — never in response to a feedback
@@ -52,7 +53,7 @@ comments. You open or find the session and read their comments; you do not
 review your own patch or write comments in their voice.
 
 **B — Agent review of a patch** (any "code review this", "review with model X
-and Y" request). Spawn a window for the target revset and post every finding as
+and Y" request). Start a review for the target revset and post every finding as
 an inline comment — anchored in tuicr, not printed to chat. Run reviewer
 sub-agents in parallel when several models are named, verify each finding
 against the real source before posting (models fabricate line numbers and
@@ -63,10 +64,23 @@ session on a different revset). If the *workflow* is ambiguous, ask which one.
 
 ## Opening a review
 
-Resolve the revset first. If it contains branch refs, refresh them:
+Check for an existing session and start one if there is none:
 
 ```bash
-eval "$(~/.agents/skills/tuicr/lib/refresh_review_refs.py \
+tuicr review list --repo <repo>                       # look for "active": true
+$SKILL_DIR/lib/tuicr_up.py <repo>
+```
+
+A dirty worktree is reviewed as-is. Otherwise the launcher fetches, reviews
+fresh `origin/<default>...HEAD` and fast-forwards a clean, behind `HEAD`. Set
+`TUICR_BASE_REF`, `TUICR_HEAD_REF` or `TUICR_REMOTE` to change that.
+
+### Building a revset yourself
+
+For an agent review of a branch range (workflow B), refresh refs first:
+
+```bash
+eval "$($SKILL_DIR/lib/refresh_review_refs.py \
   --repo <repo> [--base <branch>] [--head <branch-or-HEAD>])"
 # use ${REVIEW_REVSET}
 ```
@@ -78,28 +92,20 @@ dirty or diverged one. Pass `--no-ff` to review the local `HEAD` as-is instead
 of moving it. If a commit in the range is already merged into the base, use
 `<first>^..<last>` so the diff is non-empty.
 
-Then check for an existing session and open a window if there is none:
+### Running the launcher
 
-```bash
-tuicr review list --repo <repo>                       # look for "active": true
-~/.agents/skills/tuicr/lib/tuicr_up.py <repo>         # working-tree review window
-```
-
-`tuicr_up.py` refreshes refs, opens a tmux window, prints
-`Review session: <slug>`, and blocks until tuicr exits, then writes the
-[close report](#close-contract). Run it as an attached background shell
-command, then `connect_review(repo, session=<slug>)` on the `tuicr-feedback`
-MCP server. If tuicr is already reviewing **that same checkout**, it exits
-without opening another window; connect to the active session instead. For
-full control, open directly: `tmux new-window -d -n review
--c <repo> "tuicr -w"` (uncommitted changes) or `"tuicr -r '<revset>'"` (a
-commit range). Requires `$TMUX`; if there is no multiplexer, tell the human
-you are waiting for them to start `tuicr`, then attach via `tuicr review
-list`. A session not launched by `tuicr_up.py` has no close report, so its
+`tuicr_up.py` runs tuicr **in the terminal it is started in** and blocks until
+the human quits. On exit it writes the
+[close report](#close-contract). Run it somewhere the human can see, never in
+your own tool shell: the invoking workflow opens a terminal for it, or asks the
+human to run it in one of theirs. Once tuicr is up, call `connect_review(repo)`
+on the `tuicr-feedback` MCP server; comments made before you connect arrive in
+your first batch. If the launcher is already reviewing **that same checkout**, it
+exits 0; connect to the active session instead. A session not launched by `tuicr_up.py` has no close report, so its
 closure is unknown (`closed: null`).
 
-The CLI works outside tmux, so never require a multiplexer just to read an
-existing session.
+The `tuicr review` CLI works in any terminal, so never require a particular
+terminal just to read an existing session.
 
 For agent-authored changes, post one concise review-level description after the
 session is available:
@@ -128,7 +134,7 @@ four operations you perform, and it removes the mistakes that are easy to
 make from a shell and hard to diagnose:
 
 ```bash
-~/.agents/skills/tuicr/lib/review.py --repo <repo> comments [--unanswered]
+$SKILL_DIR/lib/review.py --repo <repo> comments [--unanswered]
 ```
 
 - `--repo` is a **subcommand** flag on the real CLI, so `tuicr review --repo
@@ -166,7 +172,7 @@ worked.
 The `tuicr-feedback` MCP server delivers feedback as durable batches. **This
 section is the behaviour**, identical for every agent.
 
-1. **Connect and wait.** `connect_review(repo, session)` returns a
+1. **Connect and wait.** `connect_review(repo)` returns a
    `review_id`. Loop on `wait_for_feedback(review_id, author=<your-model-id>)`
    (or poll `receive_feedback`). Waiting occupies a tool call; an idle agent
    receives nothing until it calls again. A batch replays — also across server restarts — until you
@@ -176,58 +182,48 @@ section is the behaviour**, identical for every agent.
      re-read the latest contents of the anchored file at the current checkout
      state before deciding how to answer, so your reasoning reflects the
      newest code even if the comment was written against an older snapshot.
-   - `withdrawn` — no longer pending (not necessarily deleted). No action.
-   - `closure` — follow the [Close contract](#close-contract).
-3. **Classify, then reply — before any work.** Every pending comment gets a
-   threaded reply via `reply(review_id, message_id, message_version, content,
-   author)`, which posts a `--type reply` at the original's **exact** anchor;
-   that reply is what closes it. A `version` mismatch means the comment
-   changed: reread before replying. What the reply *says* depends on what the
-   comment **is**. `comment_type` is only a hint — it is user configuration
-   (one human's `note` is another's `question`), so read the intent.
+   - `withdrawn` — the human removed or resolved it; your replies never cause
+     one. No action: acknowledge and keep waiting.
+   - `closure` — follow the [Close contract](#close-contract). A `superseded`
+     closure belongs to an earlier round that has reopened: ignore it.
+3. **Reply with a verdict — before any work.** Every pending comment gets a
+   threaded reply via `reply(review_id, message_id, message_version, verdict,
+   content, author, task)`, posted at the original's **exact** anchor; that
+   reply is what closes it. A `version` mismatch means the comment changed:
+   reread before replying. `comment_type` is only a hint — it is user
+   configuration (one human's `note` is another's `question`), so read the
+   intent and pick one verdict:
+   - `accepted` — you will make the change. `task` is a one-line brief of the
+     work; `content` says why. The task is **queued**, not started.
+   - `declined` — you will not make it; `content` says why. Any requested
+     change you keep as is is declined, never answered.
+   - `answered` — a question or remark that requests no change; `content`
+     answers it plainly. No work.
 
-   - **Asks for a change** — a problem, a suggestion, a nit. Reply with one
-     lowercase verdict and a brief justification:
-     - `agree — <why>; queued: <short concrete implementation/test brief>`
-     - `disagree — <why>; no work started`
-     - `needs clarification — <question>; no work started`
+   A comment that is both a question and an ask ("why 5.0? make it
+   configurable") is `accepted`: answer the question in `content`. If
+   answering exposes a real defect, accept it and queue the fix.
+4. **Queue, don't work.** Mirror every accepted task in your todo list. Edit
+   nothing while the review is open: the human batches feedback by deciding
+   when to close. `wait_for_feedback` and `reply` refuse once the work tree
+   changes; undo the edit and keep it queued. If the human changed files,
+   call `connect_review` again to accept the new state.
+5. **Acknowledge** with `acknowledge_feedback(review_id, batch_id)` once every
+   message in the batch has its reply. Then wait again.
+6. **Apply the queue after closure.** The `closure` event carries `queued`,
+   the accepted tasks of this round. With a non-empty queue the verdict is
+   `changes_queued`, never `approved`. Apply the queue through your own
+   ownership model — the contract fixes *when* and *what you promise*, never
+   *who edits*; a workflow skill that defines ownership decides the routing.
+   Then open a new review round with `tuicr_up.py`: it archives the applied
+   queue, and the human's marks on unchanged files survive.
+7. **Be idempotent.** A batch may replay. If a comment already has your
+   reply, do not duplicate it.
+8. **Stop at the local boundary.** Unstaged edits and local draft replies only.
 
-     A bare verdict is not enough, and an `agree` must accurately describe the
-     work you are about to start.
-   - **Asks a question** — the human wants to understand something. **Just
-     answer it, in plain prose.** No verdict word, no template, no `queued:`.
-     Answer directly, then stop: a question is not a change request and starts
-     no work.
-   - **Just remarks** — praise, an FYI, "this is intentional". One short
-     acknowledgement. Do not manufacture a verdict for it.
-
-   A comment can be two of these at once ("why 5.0? make it configurable"):
-   answer the question plainly *and* give a verdict on the ask — never force the
-   answer into verdict shape. If answering a question exposes a real defect, say
-   so in the answer and queue it as you would an `agree`.
-4. **Acknowledge** with `acknowledge_feedback(review_id, batch_id)` only after
-   every message in the batch is replied to and any queued work is recorded.
-   Then wait again.
-5. **Then act, through your own ownership model.** The contract fixes *when* and
-   *what you promise*, never *who edits*. If you are a solo coding agent, make
-   the edits yourself. If you orchestrate sub-agents, route the brief to the
-   owning agent and do not edit code yourself. If a workflow skill defines
-   ownership (worktrees, test/impl partitioning, a todo ledger), that skill
-   decides the routing — this contract does not override it.
-6. **`disagree`, `needs clarification`, an answered question, and an
-   acknowledged remark all start no work.** Wait for the human's follow-up,
-   which arrives as a new comment in a later batch.
-7. **Be idempotent.** A batch may replay. If a comment already has your reply
-   or queued work, do not duplicate it.
-8. **Report the outcome** in the same thread before calling the comment done,
-   unless your first reply already states it (an answered question usually
-   needs nothing further).
-9. **Stop at the local boundary.** Unstaged edits and local draft replies only.
-   The human reviews the diff and the threads afterwards.
-
-Without the MCP server, read pending comments with `review.py --repo <repo>
-comments --unanswered` and reply with `review.py reply --to <comment-id>` (see
-[Replying](#replying-to-existing-comments)); the same rules apply.
+`reply` is the only reply channel: it copies the anchor from the message,
+verifies delivery, and records the verdict. Do not post replies with
+`review.py` or `tuicr review add`.
 
 > **No status updates in tuicr.** Proactive agent comments are limited to one
 > review-level `description`, targeted `review-note` context, and explicitly
@@ -245,9 +241,16 @@ re-marks, and saves the unchanged diff. Never toggle marks or manipulate
 persisted session files yourself.
 
 Closure arrives as a `closure` event whose `closure` is `{"verdict":
-"<approved|incomplete|aborted>", "report": "<path>"}`; it is authoritative only
+"<approved|changes_queued|incomplete|aborted>", "report": "<path>", "queued":
+[...]}`; it is authoritative only
 for sessions launched by `tuicr_up.py`. Read the JSON report at `report` and
 act on its deterministic result. Closure alone never implies approval.
+
+On close, `tuicr_up.py` deletes settled comments: replies, the comments they
+answer, and answered registered questions. Their anchors go stale once the work
+lands, and the code should carry what was agreed. Descriptions, review notes,
+unanswered comments and unanswered questions remain. Take queued work from
+`queued`, not from the comments.
 
 - `approved` means tuicr exited cleanly, `HEAD` did not move, the current change
   set is non-empty, every changed file is present and human-marked reviewed at
@@ -256,7 +259,9 @@ act on its deterministic result. Closure alone never implies approval.
 - `incomplete` means the review closed cleanly but one or more checks failed.
   Report the exact `reasons` and unreviewed/absent/stale files. Also mention
   unanswered registered questions when present; those block approval.
-- `aborted` means the window was killed, crashed, or otherwise did not record a
+- `changes_queued` means the review closed cleanly with accepted work queued.
+  Apply `queued`, then open a new round; it is never approval.
+- `aborted` means tuicr was killed, crashed, or otherwise did not record a
   clean exit. It is never approval.
 
 Review marks are human-owned. Read and verify them; never create, change, or
@@ -344,77 +349,21 @@ essays.
 
 ### Replying to existing comments
 
-tuicr comments have **no parent or thread field**. Threading is purely
-positional: a reply appears under a comment only when its anchor matches
-**exactly**, on all four of
-
-| field | must equal the original's |
-| --- | --- |
-| `--target-file` | `path` |
-| `--line` | `start_line` |
-| `--end-line` | `end_line` |
-| `--side` | `side` |
-
-Copy those four straight out of the comments JSON. Never re-derive them by
-looking at the diff — the session pins them to the reviewed snapshot, and your
-line numbering may not match it.
-
-**Always pass `--end-line`.** It is optional to the CLI, not to you: omit it on
-a comment spanning lines 10–14 and the reply is filed at 10–10, a *different*
-anchor.
-
-**The reliable way to get all four right is not to type them.** `review.py
-reply` takes the **id** of the comment you are answering and copies that
-comment's anchor verbatim, so the anchor cannot be mistyped, half-copied, or
-re-derived from the wrong diff:
-
-```bash
-~/.agents/skills/tuicr/lib/review.py --repo <repo> reply \
-  --to <comment-id> --username "<your-model-id>" \
-  "<what you changed / your answer>"
-```
-
-It prints the anchor it used (`ANCHOR=<path>:<start>-<end>(<side>)`) so you can
-confirm the thread landed where you intended, and rejects a reply over the
-~1500-char budget before it reaches the session. Get the ids from
-`review.py --repo <repo> comments --unanswered`.
-
-The raw form is what that sends:
-
-```bash
-tuicr review add --repo <repo> --session <slug> \
-  --target-file <path> --line <start_line> --end-line <end_line> \
-  --side <side> \
-  --type reply --username "<your-model-id>" \
-  "<what you changed / your answer>"
-```
-
-Getting the anchor wrong fails **twice over**, and neither failure is obvious:
-
-1. The reply lands as a separate top-level comment instead of under the human's
-   — so they never see your answer next to their question.
-2. Pending detection uses the *same* anchor tuple to decide a comment has been
-   answered. A mis-anchored reply leaves it **still pending**, so it is
-   redelivered in later feedback batches.
-
-If the original's file or line no longer exists, still anchor at the original
-`path`/`start_line`/`end_line` from the comments JSON — the session pins those
-to the reviewed diff, and the human needs the answer next to their question.
-Use the newest file contents only to understand the current code, not to
-reconstruct the anchor yourself.
-
-Reserve review-level replies (no `--target-file`) for genuinely review-wide
-summaries. `--side old` is for removed lines, `--side new` for added or
-unchanged ones. `--input` accepts literal JSON, `@file.json`, or `-` for stdin.
+tuicr comments have **no parent or thread field**. Threading is positional: a
+reply appears under a comment only when its `path`, `start_line`, `end_line`
+and `side` all match exactly, and pending detection uses the same tuple. A
+mis-anchored reply lands as a separate top-level comment *and* leaves the
+original pending. The feedback server's `reply` copies the anchor from the
+message itself, even when the file or line no longer exists, so never build a
+reply by hand.
 
 ## Error handling
 
 | Situation | Action |
 |-----------|--------|
 | Multiple plausible active sessions | Ask which slug to use |
-| No active session, tmux available | Open one with `tuicr_up.py` |
-| No active session, no multiplexer | Say you are waiting for the human to start `tuicr` |
-| `tuicr` not installed | Tell the human to install it |
+| No active session | Start `tuicr_up.py` where the human can see it, or give them the exact command |
+| `tuicr` missing or older than 0.28 | Tell the human to install or upgrade it; older versions hide unsaved reviews |
 | Comments empty | Confirm the session, or ask them to save comments |
 | Base/head may be stale | Run `refresh_review_refs.py`; use `REVIEW_REVSET` |
 | `HEAD` behind + dirty worktree | Stop; reconcile before review |

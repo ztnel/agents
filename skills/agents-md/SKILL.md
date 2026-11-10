@@ -12,8 +12,9 @@ decides. `AGENTS.md` is the agent's working contract and is **human-owned
 context** — this skill exists so that contract stays coherent instead of
 accreting duplicate, drifting, or contradictory rules.
 
-The helper lives in this skill's `lib/`; resolve it as
-`~/.agents/skills/agents-md/lib/agents_md.py`. It is **read-only** with respect
+The helper is `$SKILL_DIR/lib/agents_md.py`. `$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
+It It is **read-only** with respect
 to the `AGENTS.md` (locate / outline / snapshot / diff); the actual edit is made
 with your normal edit tool so it stays in the reviewable path.
 
@@ -67,7 +68,7 @@ These rules are non-negotiable.
 ## Procedure
 
 ```bash
-LIB=~/.agents/skills/agents-md/lib/agents_md.py
+LIB=$SKILL_DIR/lib/agents_md.py
 ```
 
 1. **Locate the target.** If the human named a path, pass it; otherwise enumerate

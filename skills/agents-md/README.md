@@ -45,7 +45,7 @@ agents_md.py diff     --file <file> --snapshot <path>
 ### Example
 
 ```bash
-LIB=~/.agents/skills/agents-md/lib/agents_md.py
+LIB=$SKILL_DIR/lib/agents_md.py
 
 "$LIB" locate  --repo "$(pwd)"                 # find + flag the target
 "$LIB" outline --file ./AGENTS.md              # audit the whole file

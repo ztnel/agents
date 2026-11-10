@@ -336,6 +336,38 @@ def is_ancestor(ancestor: int, pid: int) -> bool:
     return False
 
 
+def descendant_commands(root: int) -> list[str]:
+    """Base names of every process descending from *root*, *root* included.
+
+    One ``ps`` snapshot, so the walk is consistent and costs a single spawn.
+    """
+    result = run(["ps", "-A", "-o", "pid=,ppid=,comm="])
+    if not result.ok:
+        return []
+    children: dict[int, list[tuple[int, str]]] = {}
+    names: dict[int, str] = {}
+    for line in result.lines():
+        fields = line.split(None, 2)
+        if len(fields) < 3 or not fields[0].isdigit() or not fields[1].isdigit():
+            continue
+        pid, ppid = int(fields[0]), int(fields[1])
+        name = Path(fields[2].strip()).name
+        names[pid] = name
+        children.setdefault(ppid, []).append((pid, name))
+    found: list[str] = []
+    stack = [root]
+    seen: set[int] = set()
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        if pid in names:
+            found.append(names[pid])
+        stack.extend(child for child, _ in children.get(pid, []))
+    return found
+
+
 def pids_related(first: int, second: int) -> bool:
     """Whether the two PIDs are the same process or one descends from the other.
 

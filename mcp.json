@@ -13,8 +13,7 @@
         "${PLUGIN_ROOT}/skills/tuicr/lib/feedback_server.py"
       ],
       "env": {
-        "UV_PROJECT_ENVIRONMENT": "${PLUGIN_DATA}/skillkit-venv",
-        "FEEDBACK_INBOX": "${PLUGIN_DATA}/tuicr-feedback-inbox.sqlite3"
+        "UV_PROJECT_ENVIRONMENT": "${PLUGIN_DATA}/skillkit-venv"
       }
     },
     "presentation-feedback": {
@@ -29,8 +28,7 @@
         "${PLUGIN_ROOT}/skills/presentation/lib/feedback_server.py"
       ],
       "env": {
-        "UV_PROJECT_ENVIRONMENT": "${PLUGIN_DATA}/skillkit-venv",
-        "FEEDBACK_INBOX": "${PLUGIN_DATA}/presentation-feedback-inbox.sqlite3"
+        "UV_PROJECT_ENVIRONMENT": "${PLUGIN_DATA}/skillkit-venv"
       }
     },
     "github": {

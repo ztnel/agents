@@ -16,7 +16,8 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 PLUGIN_JSON = REPO_ROOT / "plugin.json"
 MCP_JSON = REPO_ROOT / "mcp.json"
 
-SKIP_DIRS = {".git", "__pycache__", ".copilot-home", ".pytest_cache", "node_modules"}
+# e2e fixtures and scenario solutions are the code under test, not the harness.
+SKIP_DIRS = {".git", "__pycache__", ".copilot-home", ".pytest_cache", "node_modules", "fixtures", "scenarios"}
 
 
 def _run(argv: list[str], *, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:

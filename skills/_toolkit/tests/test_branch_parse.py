@@ -39,6 +39,15 @@ url = "https://t/{ticket}"
 
 PRESERVE = LOWERCASE.replace('ticket_case = "lower"', 'ticket_case = "preserve"')
 
+LETTER_KEY = """
+name = "letter-key"
+[branch]
+pattern = '^(?P<prefix>fix|feature|patch|@[A-Za-z0-9][A-Za-z0-9._-]*)/(?P<ticket>[A-Za-z]{2,10}-[0-9]+)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$'
+ticket_case = "upper"
+[ticket]
+url = "https://t/{ticket}"
+"""
+
 
 def profile_from(text: str, tmp: str):
     """Materialise an inline profile and load it."""
@@ -59,13 +68,14 @@ class TestAcrossConventions(unittest.TestCase):
     """The same parser must handle unrelated ticket grammars."""
 
     def test_letter_key_ticket(self) -> None:
-        fields = parse_branch(
-            "feature/abc-75-fix-the-widget", load_profile(None, "example-jira-ado")
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            fields = parse_branch(
+                "feature/abc-75-fix-the-widget", profile_from(LETTER_KEY, tmp)
+            )
         self.assertEqual(fields["TICKET_ID"], "ABC-75")
         self.assertEqual(fields["PREFIX"], "feature")
         self.assertEqual(fields["SLUG"], "fix-the-widget")
-        self.assertEqual(fields["TICKET_URL"], "https://example.atlassian.net/browse/ABC-75")
+        self.assertEqual(fields["TICKET_URL"], "https://t/ABC-75")
 
     def test_bare_numeric_ticket(self) -> None:
         """A forge using bare issue numbers needs no code change."""
@@ -76,9 +86,8 @@ class TestAcrossConventions(unittest.TestCase):
         self.assertEqual(fields["TICKET_URL"], "https://github.com/OWNER/REPO/issues/123")
 
     def test_personal_prefix(self) -> None:
-        fields = parse_branch(
-            "@alice/abc-9-tidy-up", load_profile(None, "example-jira-ado")
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            fields = parse_branch("@alice/abc-9-tidy-up", profile_from(LETTER_KEY, tmp))
         self.assertEqual(fields["PREFIX"], "@alice")
         self.assertEqual(fields["TICKET_ID"], "ABC-9")
 

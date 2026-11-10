@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Launch tuicr in a new tmux window to review git changes.
+"""Run a tuicr review in the current terminal and report how it closed.
 
 Refreshes the review refs (so the diff reflects the remote, not a stale local
-copy), opens a detached tmux window running tuicr over the resolved revset,
-switches focus to the review window, and blocks until tuicr exits — then
-persists the deterministic close report that the tuicr feedback MCP server
-delivers as the review's closure event.
+copy), runs tuicr in the foreground over the resolved revset, and, after tuicr
+exits, persists the deterministic close report. The ``tuicr-feedback`` MCP
+server delivers that report to the agent as the review's closure event.
+
+This script never drives a terminal multiplexer. Run it wherever the human will
+review: the caller's agent opens a pane for it (for example through the tmux
+skill), or the human runs it in a terminal of their own.
 
 Usage::
 
@@ -15,7 +18,6 @@ Arguments:
     directory: Git repository to review. Default: current directory.
 
 Environment variables:
-    TUICR_WINDOW_NAME: Name of the new tmux window. Default: ``tuicr``.
     TUICR_BASE_REF: Base ref for the review revset. Default: the remote's
         default branch — never a hardcoded name, so this works in any repo.
     TUICR_HEAD_REF: Head ref for the review revset. Default: ``HEAD``.
@@ -24,11 +26,13 @@ Environment variables:
 
 from __future__ import annotations
 
+import argparse
 import os
 import json
+import subprocess
 import sys
-import tempfile
 import time
+import warnings
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_lib"))
@@ -38,8 +42,9 @@ from skillkit.approval import ApprovalReceipt, ReviewedFile  # noqa: E402
 from skillkit.cli import parse_metadata, run_main  # noqa: E402
 from skillkit.errors import SkillError  # noqa: E402
 from skillkit.gitio import git  # noqa: E402
+from skillkit.lock import PidFile  # noqa: E402
 from skillkit.proc import run, which  # noqa: E402
-from skillkit.tmuxio import inside_tmux, pane_exists  # noqa: E402
+from skillkit import workqueue  # noqa: E402
 import questions  # noqa: E402
 
 #: ANSI colours for the `[tuicr]` log prefix. Suppressed when stdout is not a
@@ -50,6 +55,11 @@ _RED = "\033[0;31m"
 _RESET = "\033[0m"
 _SLUG_RETRY_DELAY = 0.1
 _SLUG_RETRY_LIMIT = 20
+#: First tuicr that lists a review before it is saved; older ones hide it from
+#: ``tuicr review list`` until the first comment, so agents cannot connect.
+MIN_TUICR = (0, 28)
+#: Orientation comments that survive closure; every settled comment is wiped.
+KEPT_TYPES = frozenset({"description", "review-note"})
 
 
 def _log(colour: str, message: str, stream=sys.stdout) -> None:
@@ -75,14 +85,13 @@ def log_error(message: str) -> None:
     _log(_RED, message, stream=sys.stderr)
 
 
-def already_reviewing(directory: str) -> bool:
-    """Whether a tuicr pane is already open on *directory*.
+def review_lock(directory: str) -> PidFile:
+    """Pidfile held by the launcher while it reviews *directory*.
 
     Scoped to this checkout deliberately: a global check would block reviewing
     a second repository at the same time.
     """
-    result = run(["tmux", "list-panes", "-a", "-F", "#{pane_current_command} #{pane_current_path}"])
-    return result.ok and f"tuicr {directory}" in result.lines()
+    return PidFile(paths.state_dir("tuicr", "running", create=True) / f"{paths.short_hash(directory)}.pid")
 
 
 def resolve_revset(target_dir: str) -> str:
@@ -115,6 +124,21 @@ def resolve_revset(target_dir: str) -> str:
     if not revset:
         raise SkillError("refresh helper did not emit REVIEW_REVSET")
     return revset
+
+
+def warn_outdated() -> None:
+    """Warn the human when the installed tuicr is older than :data:`MIN_TUICR`."""
+    words = run(["tuicr", "--version"]).stdout.split()
+    try:
+        installed = tuple(int(part) for part in words[-1].split(".")[:2])
+    except (IndexError, ValueError):
+        return
+    if installed < MIN_TUICR:
+        warnings.warn(
+            f"tuicr {words[-1]} hides unsaved reviews from agents; upgrade to "
+            f"{'.'.join(map(str, MIN_TUICR))} or newer (brew upgrade tuicr)",
+            stacklevel=2,
+        )
 
 
 def active_review_slug(target_dir: str) -> str:
@@ -176,10 +200,20 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
         reasons.append("not every changed file is reviewed at current content")
     if unanswered:
         reasons.append("questions to the human remain unanswered")
+    queued = workqueue.pending(
+        workqueue.default_inbox("tuicr-feedback"), workqueue.scope(target_dir, slug))
+    if queued:
+        reasons.append("accepted work is queued; apply it and open a new review round")
     approved = not reasons
+    if approved:
+        verdict = "approved"
+    elif exit_code != 0:
+        verdict = "aborted"
+    else:
+        verdict = "changes_queued" if queued else "incomplete"
     return {
         "approved": approved,
-        "verdict": "approved" if approved else ("aborted" if exit_code != 0 else "incomplete"),
+        "verdict": verdict,
         "approval": ApprovalReceipt(
             workspace=str(Path(target_dir).resolve()),
             head=head_after,
@@ -197,140 +231,141 @@ def review_verdict(target_dir: str, slug: str, head_before: str, exit_code: int 
         "tuicr_exit_code": exit_code,
         "marks": marks,
         "unanswered": unanswered,
+        "queued": queued,
         "reasons": reasons,
     }
 
 
+def anchor(item: dict) -> dict:
+    start = item.get("start_line") or 0
+    return {
+        "path": item.get("path") or "", "start_line": start,
+        "end_line": item.get("end_line") or start, "side": item.get("side") or "new",
+    }
+
+
+def anchor_key(item: dict) -> str:
+    return json.dumps(anchor(item), sort_keys=True)
+
+
+def settled(comments: list[dict], registered: set[str], answered: set[str]) -> list[str]:
+    """Ids of comments the review has settled: replies and what they answer.
+
+    A later reply at the same anchor answers a comment. Answered questions
+    and their answers are settled; unanswered questions, unanswered comments
+    and orientation comments are not.
+    """
+    replies: dict[str, list[str]] = {}
+    for item in comments:
+        if item.get("comment_type") == "reply":
+            replies.setdefault(anchor_key(item), []).append(item["created_at"])
+    return [
+        item["id"] for item in comments
+        if item.get("comment_type") not in KEPT_TYPES
+        and (item["id"] not in registered or item["id"] in answered)
+        and (
+            item.get("comment_type") == "reply" or item["id"] in answered
+            or any(stamp > item["created_at"] for stamp in replies.get(anchor_key(item), []))
+        )
+    ]
+
+
+def wipe_settled(target_dir: str, slug: str) -> list[str]:
+    """Delete settled comments: their anchors may be stale once work lands."""
+    listed = run(["tuicr", "review", "comments", "--repo", target_dir, "--session", slug])
+    if not listed.ok:
+        raise SkillError(f"could not read comments to wipe: {listed.stderr.strip()}")
+    comments = json.loads(listed.stdout or "[]")
+    ids = settled(comments, questions.registered_ids(target_dir, slug),
+                  questions.answered(target_dir, slug))
+    for comment_id in ids:
+        result = run(["tuicr", "review", "delete", "--repo", target_dir,
+                      "--session", slug, "--comment-id", comment_id])
+        if not result.ok:
+            raise SkillError(f"could not delete comment {comment_id}: {result.stderr.strip()}")
+    questions.forget(target_dir, slug, set(ids))
+    return ids
+
+
 def report_path(target_dir: str, slug: str) -> Path:
-    """Close report location; the tuicr feedback MCP server reads the same path."""
+    """Deterministic close-report path for one review session."""
     return paths.state_dir("tuicr", "reviews", create=True) / f"{paths.short_hash(target_dir, slug)}.json"
 
 
-def launch(target_dir: str) -> int:
-    """Open tuicr in a tmux window and block until it exits."""
-    window_name = os.environ.get("TUICR_WINDOW_NAME", "tuicr")
-    remote = os.environ.get("TUICR_REMOTE", "origin")
+def persist_close_report(target_dir: str, slug: str, verdict: dict) -> Path:
+    """Write the close report to its deterministic per-session path."""
+    state_file = report_path(target_dir, slug)
+    paths.write_json_atomic(state_file, verdict, indent=2)
+    return state_file
 
+
+def launch(target_dir: str) -> int:
+    """Run tuicr in this terminal until it exits, then persist the close report."""
+    remote = os.environ.get("TUICR_REMOTE", "origin")
     dirty = bool(git(target_dir, "status", "--porcelain").stdout.strip())
     revset = ""
     if not dirty:
         log_info(f"Refreshing review refs from '{remote}'")
         revset = resolve_revset(target_dir)
 
-    if already_reviewing(target_dir):
-        log_warn(f"tuicr is already reviewing {target_dir} in another window")
-        log_info("Switch to it with Ctrl-b + w (window list)")
-        return 0
-
-    log_info(f"Launching tuicr in a new tmux window ('{window_name}')")
     log_info(f"Directory: {target_dir}")
-    if dirty:
-        log_info("Review target: worktree")
-    else:
-        log_info(f"Review target: {revset}")
-
+    log_info("Review target: worktree" if dirty else f"Review target: {revset}")
     head_before = git(target_dir, "rev-parse", "HEAD").stdout.strip()
 
-    # tuicr must inherit the tmux pane's terminal so terminal editors launched
-    # by its `e` binding can take over the pane. Capturing stdout makes nvim
-    # inherit a pipe and fail before it draws.
-    inner = "tuicr -w" if dirty else f"tuicr -r {_sh_quote(revset)}"
-
-    handle, completion_file = tempfile.mkstemp(
-        prefix="tuicr-complete.", dir=os.environ.get("TMPDIR", "/tmp")
-    )
-    os.close(handle)
-    Path(completion_file).unlink(missing_ok=True)
-    command = (
-        f"cd {_sh_quote(target_dir)} && {inner}; "
-        f"rc=$?; printf '%s\\n' \"$rc\" > {_sh_quote(completion_file)}"
-    )
-    args = ["tmux", "new-window", "-d", "-P", "-F", "#{pane_id}", "-n", window_name, "-c", target_dir]
-    # New panes inherit tmux's environment, not this caller's shell settings.
-    for name in ("EDITOR", "VISUAL"):
-        if name in os.environ:
-            args += ["-e", f"{name}={os.environ[name]}"]
-    created = run([*args, command])
-    if not created.ok:
-        raise SkillError(f"could not create tmux window: {created.stderr}")
-    pane_id = created.stdout.strip()
-
-    run(["tmux", "select-window", "-t", pane_id])
-    review_slug = active_review_slug(target_dir)
-    report = report_path(target_dir, review_slug)
-    # A report from an earlier close of this session would read as closed.
-    report.unlink(missing_ok=True)
-    log_info(f"Review session: {review_slug}")
-    log_info(f"tuicr is running in window '{window_name}' (pane {pane_id})")
-    log_info("Waiting for tuicr to exit...")
-    while pane_exists(pane_id):
-        time.sleep(0.2)
-    log_info("tuicr finished")
-
-    exit_code = None
+    # tuicr inherits this terminal so editors launched by its `e` binding can
+    # take it over; capturing its output would hand nvim a pipe.
+    command = ["tuicr", "-w"] if dirty else ["tuicr", "-r", revset]
+    process = subprocess.Popen(command, cwd=target_dir)  # noqa: S603 - argument vector
     try:
-        raw_exit = Path(completion_file).read_text(encoding="utf-8").strip()
-        exit_code = int(raw_exit)
-    except (OSError, ValueError):
-        pass
+        review_slug = active_review_slug(target_dir)
+        # A report left by an earlier review of this session must not read as
+        # closure while this one is still open.
+        report_path(target_dir, review_slug).unlink(missing_ok=True)
+        # Work queued in the previous round was applied before this one opened.
+        workqueue.archive(
+            workqueue.default_inbox("tuicr-feedback"), workqueue.scope(target_dir, review_slug))
+        exit_code = process.wait()
     finally:
-        Path(completion_file).unlink(missing_ok=True)
+        if process.poll() is None:
+            process.wait()
+    log_info("tuicr finished")
+    log_info("If you exported instructions, they are in your clipboard")
 
     verdict = review_verdict(target_dir, review_slug, head_before, exit_code)
-    paths.write_json_atomic(report, verdict, indent=2)
+    wiped = wipe_settled(target_dir, review_slug)
+    log_info(f"Wiped {len(wiped)} settled comment(s); descriptions and review notes remain")
+    report = persist_close_report(target_dir, review_slug, verdict)
     log_info(f"verdict={verdict['verdict']}; report={report}")
     return 0
 
 
-def _sh_quote(value: str) -> str:
-    """Quote *value* for the shell command string tmux runs.
-
-    tmux's ``new-window`` takes a command *string*, not an argument vector, so
-    this one interface genuinely needs quoting.
-    """
-    import shlex
-
-    return shlex.quote(value)
-
-
 def main(argv: list[str]) -> int:
     """Entry point."""
-    if argv and argv[0] in ("-h", "--help"):
-        print(__doc__)
-        return 0
+    parser = argparse.ArgumentParser(prog="tuicr_up.py", description=__doc__.split("\n\n")[0])
+    parser.add_argument("directory", nargs="?", default=".")
+    args = parser.parse_args(argv)
 
     if which("tuicr") is None:
         log_error("tuicr not found. Install it first.")
         return 1
+    warn_outdated()
 
-    target = argv[0] if argv else "."
-    if not Path(target).is_dir():
-        log_error(f"Not a git repository: {target}")
+    if not Path(args.directory).is_dir():
+        log_error(f"Not a git repository: {args.directory}")
         return 1
-    target_dir = str(Path(target).resolve())
+    target_dir = str(Path(args.directory).resolve())
 
     if not git(target_dir, "rev-parse", "--git-dir").ok:
         log_error(f"Not a git repository: {target_dir}")
         return 1
 
-    if not inside_tmux():
-        log_error("Not running inside tmux!")
-        print()
-        print("To use tuicr with your coding agent, run that agent inside tmux.")
-        print()
-        print("1. Exit the current agent session.")
-        print()
-        print("2. Restart the agent inside tmux.")
-        print()
-        print("3. Then run /tuicr again.")
-        return 1
-
-    if already_reviewing(target_dir):
-        log_warn(f"tuicr is already reviewing {target_dir} in another window")
-        log_info("Switch to it with Ctrl-b + w (window list)")
+    lock = review_lock(target_dir)
+    if lock.live_owner() is not None:
+        log_warn(f"tuicr is already reviewing {target_dir} (launcher PID {lock.live_owner()})")
         return 0
 
-    return launch(target_dir)
+    with lock:
+        return launch(target_dir)
 
 
 if __name__ == "__main__":

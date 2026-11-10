@@ -30,12 +30,13 @@ This skill only handles **worktree lifecycle mechanics**. It does NOT:
 
 ## Scripts
 
-All scripts live next to this file and accept `-h` for usage.
+All scripts live in `$SKILL_DIR` and accept `-h` for usage. `$SKILL_DIR` is the directory containing this SKILL.md. Run scripts by that
+absolute path, directly; they have shebangs, so never prefix `python`.
 
 ### Create a worktree
 
 ```
-.agents/skills/git-worktree/worktree_new.py [--copy-agent-context] <branch> [base]
+$SKILL_DIR/worktree_new.py [--copy-agent-context] <branch> [base]
 ```
 
 - `branch` — new branch name (created if it does not exist).
@@ -66,7 +67,7 @@ Behaviour:
 ### Migrate existing worktrees to symlinks
 
 ```
-.agents/skills/git-worktree/relink_agent_context.py [--apply] [--all | <branch>]
+$SKILL_DIR/relink_agent_context.py [--apply] [--all | <branch>]
 ```
 
 Converts worktrees that still hold **copied** agent context (e.g. created
@@ -85,7 +86,7 @@ before symlinking was the default) into symlinks pointing at the main worktree.
 ### List worktrees
 
 ```
-.agents/skills/git-worktree/worktree_list.py
+$SKILL_DIR/worktree_list.py
 ```
 
 Wraps `git worktree list` with the branch each worktree is on. Use this
@@ -94,7 +95,7 @@ before creating or removing to see current state.
 ### Remove a worktree
 
 ```
-.agents/skills/git-worktree/worktree_remove.py <branch> [--force] [--delete-branch]
+$SKILL_DIR/worktree_remove.py <branch> [--force] [--delete-branch]
 ```
 
 - `branch` — the branch whose worktree should be removed. The script
@@ -119,15 +120,15 @@ created a sibling `build-<branch>/` directory, remove it manually.
 
 ```
 # Agent A starts feat/foo
-.agents/skills/git-worktree/worktree_new.py feat/foo
+$SKILL_DIR/worktree_new.py feat/foo
 # -> created /home/cs/.worktrees/repo/feat/foo
 # (open new shell there, start a Copilot session)
 
 # Agent B starts feat/bar in parallel
-.agents/skills/git-worktree/worktree_new.py feat/bar
+$SKILL_DIR/worktree_new.py feat/bar
 
 # Later, after feat/foo PR is merged:
-.agents/skills/git-worktree/worktree_remove.py feat/foo --delete-branch
+$SKILL_DIR/worktree_remove.py feat/foo --delete-branch
 ```
 
 ## Notes
